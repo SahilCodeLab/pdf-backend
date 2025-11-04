@@ -1,35 +1,16 @@
 import os
 import io
-import subprocess
-import tempfile
-import shutil
-import zipfile
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from pypdf import PdfMerger, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, A4
-import base64
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from reportlab.lib.pagesizes import letter
 
 app = Flask(__name__)
 CORS(app)
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
-
-# Helper Functions
-def create_temp_file(file_stream, suffix):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
-        temp.write(file_stream.read())
-        return temp.name
-
-def cleanup_files(files_list):
-    for f in files_list:
-        if f and os.path.exists(f):
-            os.remove(f)
 
 # === PDF TOOLS ===
 
@@ -49,6 +30,8 @@ def merge_pdf():
         for file in files:
             if file and file.filename.lower().endswith('.pdf'):
                 merger.append(file.stream)
+            else:
+                return jsonify({"error": f"Invalid file: {file.filename}"}), 400
         
         output_stream = io.BytesIO()
         merger.write(output_stream)
@@ -89,39 +72,6 @@ def split_pdf():
     
     except Exception as e:
         return jsonify({"error": f"Split failed: {str(e)}"}), 500
-
-@app.route('/api/compress-pdf', methods=['POST'])
-def compress_pdf():
-    """Compress PDF using Ghostscript"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    
-    temp_input = None
-    temp_output = None
-    
-    try:
-        temp_input = create_temp_file(file, '.pdf')
-        temp_output = temp_input.replace('.pdf', '_compressed.pdf')
-        
-        command = [
-            'gs', '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4',
-            '-dPDFSETTINGS=/ebook', '-dNOPAUSE', '-dQUIET', '-dBATCH',
-            f'-sOutputFile={temp_output}', temp_input
-        ]
-        
-        result = subprocess.run(command, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            return jsonify({"error": f"Ghostscript error: {result.stderr}"}), 500
-        
-        return send_file(temp_output, as_attachment=True, download_name='compressed.pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Compression failed: {str(e)}"}), 500
-    finally:
-        cleanup_files([temp_input, temp_output])
 
 @app.route('/api/protect-pdf', methods=['POST'])
 def protect_pdf():
@@ -229,7 +179,7 @@ def add_watermark():
             packet = io.BytesIO()
             can = canvas.Canvas(packet, pagesize=letter)
             can.setFont("Helvetica", 40)
-            can.setFillColorRGB(0.5, 0.5, 0.5, alpha=0.3)  # Gray with transparency
+            can.setFillColorRGB(0.5, 0.5, 0.5, alpha=0.3)
             can.translate(300, 400)
             can.rotate(45)
             can.drawString(0, 0, watermark_text)
@@ -270,7 +220,7 @@ def add_page_numbers():
             packet = io.BytesIO()
             can = canvas.Canvas(packet, pagesize=letter)
             can.setFont("Helvetica", 12)
-            can.drawString(300, 20, str(page_num + 1))  # Bottom center
+            can.drawString(300, 20, str(page_num + 1))
             can.save()
             
             packet.seek(0)
@@ -291,80 +241,56 @@ def add_page_numbers():
     except Exception as e:
         return jsonify({"error": f"Page numbering failed: {str(e)}"}), 500
 
-# === SECURITY TOOLS ===
-
-@app.route('/api/encrypt-file', methods=['POST'])
-def encrypt_file():
-    """Encrypt any file with AES"""
+@app.route('/api/extract-text', methods=['POST'])
+def extract_text():
+    """Extract text from PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    password = request.form.get('password', '')
-    
-    if not password:
-        return jsonify({"error": "Password required"}), 400
     
     try:
-        file_data = file.read()
+        reader = PdfReader(file.stream)
+        text_data = {}
         
-        salt = os.urandom(16)
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-        fernet = Fernet(key)
+        for page_num in range(len(reader.pages)):
+            page = reader.pages[page_num]
+            text = page.extract_text()
+            text_data[f"page_{page_num + 1}"] = text
         
-        encrypted_data = fernet.encrypt(file_data)
-        final_data = salt + encrypted_data
-        
-        output_stream = io.BytesIO(final_data)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name=f'encrypted_{file.filename}')
+        return jsonify({
+            "success": True,
+            "total_pages": len(text_data),
+            "text": text_data
+        })
     
     except Exception as e:
-        return jsonify({"error": f"Encryption failed: {str(e)}"}), 500
+        return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
 
-@app.route('/api/decrypt-file', methods=['POST'])
-def decrypt_file():
-    """Decrypt AES encrypted file"""
+@app.route('/api/get-pdf-info', methods=['POST'])
+def get_pdf_info():
+    """Get PDF information"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    password = request.form.get('password', '')
-    
-    if not password:
-        return jsonify({"error": "Password required"}), 400
     
     try:
-        file_data = file.read()
+        reader = PdfReader(file.stream)
         
-        salt = file_data[:16]
-        encrypted_data = file_data[16:]
+        info = {
+            "total_pages": len(reader.pages),
+            "is_encrypted": reader.is_encrypted,
+            "metadata": reader.metadata
+        }
         
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-        fernet = Fernet(key)
-        
-        decrypted_data = fernet.decrypt(encrypted_data)
-        
-        output_stream = io.BytesIO(decrypted_data)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name=f'decrypted_{file.filename}')
+        return jsonify({
+            "success": True,
+            "info": info
+        })
     
     except Exception as e:
-        return jsonify({"error": f"Decryption failed: {str(e)}"}), 500
+        return jsonify({"error": f"Info extraction failed: {str(e)}"}), 500
 
 # === HEALTH CHECK ===
 
@@ -372,22 +298,19 @@ def decrypt_file():
 def home():
     return jsonify({
         "message": "PDF Tools API is running!",
-        "version": "3.0",
+        "version": "1.0",
         "status": "healthy",
         "endpoints": {
             "pdf_tools": [
-                "/api/merge-pdf - Merge PDFs",
-                "/api/split-pdf - Split PDF", 
-                "/api/compress-pdf - Compress PDF",
-                "/api/protect-pdf - Password Protect PDF",
-                "/api/remove-password - Remove PDF Password",
-                "/api/rotate-pdf - Rotate PDF",
-                "/api/add-watermark - Add Watermark",
-                "/api/add-page-numbers - Add Page Numbers"
-            ],
-            "security": [
-                "/api/encrypt-file - Encrypt File",
-                "/api/decrypt-file - Decrypt File"
+                "POST /api/merge-pdf - Merge PDFs",
+                "POST /api/split-pdf - Split PDF", 
+                "POST /api/protect-pdf - Password Protect PDF",
+                "POST /api/remove-password - Remove PDF Password",
+                "POST /api/rotate-pdf - Rotate PDF",
+                "POST /api/add-watermark - Add Watermark",
+                "POST /api/add-page-numbers - Add Page Numbers",
+                "POST /api/extract-text - Extract Text from PDF",
+                "POST /api/get-pdf-info - Get PDF Information"
             ]
         }
     })

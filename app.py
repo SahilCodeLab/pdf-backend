@@ -7,7 +7,7 @@ import zipfile
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from PIL import Image
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+from pypdf import PdfMerger, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, A4
 import base64
@@ -39,7 +39,6 @@ def cleanup_files(files_list):
 
 @app.route('/api/merge-pdf', methods=['POST'])
 def merge_pdf():
-    """Merge multiple PDF files"""
     if 'files' not in request.files:
         return jsonify({"error": "No files uploaded"}), 400
     
@@ -53,8 +52,6 @@ def merge_pdf():
         for file in files:
             if file and file.filename.lower().endswith('.pdf'):
                 merger.append(file.stream)
-            else:
-                return jsonify({"error": f"Invalid file: {file.filename}"}), 400
         
         output_stream = io.BytesIO()
         merger.write(output_stream)
@@ -68,7 +65,6 @@ def merge_pdf():
 
 @app.route('/api/split-pdf', methods=['POST'])
 def split_pdf():
-    """Split PDF by page range"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -98,7 +94,6 @@ def split_pdf():
 
 @app.route('/api/compress-pdf', methods=['POST'])
 def compress_pdf():
-    """Compress PDF using Ghostscript"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -129,72 +124,8 @@ def compress_pdf():
     finally:
         cleanup_files([temp_input, temp_output])
 
-@app.route('/api/pdf-to-images', methods=['POST'])
-def pdf_to_images():
-    """Convert PDF to images using pdf2image"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    format_type = request.form.get('format', 'jpg')
-    
-    try:
-        from pdf2image import convert_from_bytes
-        
-        pdf_bytes = file.read()
-        images = convert_from_bytes(pdf_bytes, fmt=format_type.upper())
-        
-        if len(images) == 1:
-            img_stream = io.BytesIO()
-            images[0].save(img_stream, format=format_type.upper(), quality=95)
-            img_stream.seek(0)
-            return send_file(img_stream, as_attachment=True, download_name=f'converted.{format_type}')
-        else:
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-                for i, img in enumerate(images):
-                    img_stream = io.BytesIO()
-                    img.save(img_stream, format=format_type.upper(), quality=95)
-                    zip_file.writestr(f'page_{i+1}.{format_type}', img_stream.getvalue())
-            
-            zip_buffer.seek(0)
-            return send_file(zip_buffer, as_attachment=True, download_name='converted_pages.zip')
-    
-    except Exception as e:
-        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
-
-@app.route('/api/images-to-pdf', methods=['POST'])
-def images_to_pdf():
-    """Convert multiple images to PDF"""
-    if 'files' not in request.files:
-        return jsonify({"error": "No files uploaded"}), 400
-    
-    files = request.files.getlist('files')
-    
-    try:
-        images = []
-        for file in files:
-            if file and allowed_file(file.filename):
-                img = Image.open(file.stream)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                images.append(img)
-        
-        if not images:
-            return jsonify({"error": "No valid images found"}), 400
-        
-        pdf_stream = io.BytesIO()
-        images[0].save(pdf_stream, "PDF", resolution=100.0, save_all=True, append_images=images[1:])
-        pdf_stream.seek(0)
-        
-        return send_file(pdf_stream, as_attachment=True, download_name='converted.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
-
 @app.route('/api/protect-pdf', methods=['POST'])
 def protect_pdf():
-    """Add password protection to PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -224,7 +155,6 @@ def protect_pdf():
 
 @app.route('/api/remove-password', methods=['POST'])
 def remove_password():
-    """Remove password protection from PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -253,7 +183,6 @@ def remove_password():
 
 @app.route('/api/rotate-pdf', methods=['POST'])
 def rotate_pdf():
-    """Rotate PDF pages"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -280,11 +209,40 @@ def rotate_pdf():
     except Exception as e:
         return jsonify({"error": f"Rotation failed: {str(e)}"}), 500
 
+# === IMAGE TO PDF ===
+
+@app.route('/api/images-to-pdf', methods=['POST'])
+def images_to_pdf():
+    if 'files' not in request.files:
+        return jsonify({"error": "No files uploaded"}), 400
+    
+    files = request.files.getlist('files')
+    
+    try:
+        images = []
+        for file in files:
+            if file and allowed_file(file.filename):
+                img = Image.open(file.stream)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                images.append(img)
+        
+        if not images:
+            return jsonify({"error": "No valid images found"}), 400
+        
+        pdf_stream = io.BytesIO()
+        images[0].save(pdf_stream, "PDF", resolution=100.0, save_all=True, append_images=images[1:])
+        pdf_stream.seek(0)
+        
+        return send_file(pdf_stream, as_attachment=True, download_name='converted.pdf', mimetype='application/pdf')
+    
+    except Exception as e:
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
+
 # === IMAGE TOOLS ===
 
 @app.route('/api/compress-image', methods=['POST'])
 def compress_image():
-    """Compress image with quality control"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -308,7 +266,6 @@ def compress_image():
 
 @app.route('/api/resize-image', methods=['POST'])
 def resize_image():
-    """Resize image maintaining aspect ratio"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -349,7 +306,6 @@ def resize_image():
 
 @app.route('/api/encrypt-file', methods=['POST'])
 def encrypt_file():
-    """Encrypt any file with AES"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -385,7 +341,6 @@ def encrypt_file():
 
 @app.route('/api/decrypt-file', methods=['POST'])
 def decrypt_file():
-    """Decrypt AES encrypted file"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -433,13 +388,12 @@ def home():
                 "/api/merge-pdf - Merge PDFs",
                 "/api/split-pdf - Split PDF", 
                 "/api/compress-pdf - Compress PDF",
-                "/api/pdf-to-images - PDF to Images",
-                "/api/images-to-pdf - Images to PDF",
                 "/api/protect-pdf - Password Protect PDF",
                 "/api/remove-password - Remove PDF Password",
                 "/api/rotate-pdf - Rotate PDF"
             ],
             "image_tools": [
+                "/api/images-to-pdf - Images to PDF",
                 "/api/compress-image - Compress Image",
                 "/api/resize-image - Resize Image"
             ],

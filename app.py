@@ -1,448 +1,807 @@
+
 import os
 import io
-import subprocess  # External tools ke liye
-import tempfile    # Temporary files ke liye
-import shutil      # Directory operations ke liye
-from flask import Flask, request, send_file, jsonify, make_response
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
-from pdf2docx import Converter # PDF to Word
+import json
+import fitz  # PyMuPDF - Powerful PDF manipulation
+import subprocess
+import tempfile
+import shutil
+import zipfile
+from flask import Flask, request, send_file, jsonify, send_from_directory
 from flask_cors import CORS
-from PIL import Image # JPG to PDF
-from reportlab.pdfgen import canvas # Page numbers / Watermark
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.colors import grey # Watermark color
-from pdf2image import convert_from_bytes # PDF to JPG (Needs Poppler)
-import zipfile # PDF to JPG (multiple images)
+from PIL import Image, ImageEnhance, ImageFilter
+import cv2
+import numpy as np
+from werkzeug.utils import secure_filename
+import pandas as pd
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.colors import Color, grey, red, blue
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import qrcode
+from barcode import Code128
+from barcode.writer import ImageWriter
+import pytesseract
+from cryptography.fernet import Fernet
+import base64
 
 app = Flask(__name__)
 CORS(app)
 
-# --- Helper Functions ---
+# Configuration
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
+
+# Initialize encryption
+def generate_key():
+    return Fernet.generate_key()
+
+fernet = Fernet(generate_key())
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Helper Functions
 def create_temp_file(file_stream, suffix):
-    # Ek temporary file banata hai aur uska path return karta hai
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
         temp.write(file_stream.read())
         return temp.name
 
 def cleanup_files(files_list):
-    # Temporary files ko delete karta hai
     for f in files_list:
         if f and os.path.exists(f):
             os.remove(f)
 
 def cleanup_dir(dir_path):
-    # Temporary directory ko delete karta hai
     if dir_path and os.path.exists(dir_path):
         shutil.rmtree(dir_path)
 
-# --- Feature 1: Merge PDF ---
-@app.route('/api/merge', methods=['POST'])
+def pdf_to_images(pdf_bytes):
+    """Convert PDF to list of PIL Images"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images = []
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Higher resolution
+        img_data = pix.tobytes("ppm")
+        img = Image.open(io.BytesIO(img_data))
+        images.append(img)
+    doc.close()
+    return images
+
+# === PDF MANIPULATION TOOLS ===
+
+@app.route('/api/merge-pdf', methods=['POST'])
 def merge_pdf():
-    if 'files' not in request.files: return jsonify({"error": "No files found"}), 400
+    """Merge multiple PDF files"""
+    if 'files' not in request.files:
+        return jsonify({"error": "No files uploaded"}), 400
+    
     files = request.files.getlist('files')
-    if len(files) < 2: return jsonify({"error": "Upload at least 2 files"}), 400
-    merger = PdfMerger()
+    if len(files) < 2:
+        return jsonify({"error": "At least 2 PDF files required"}), 400
+
+    merger = fitz.open()
+    temp_files = []
+    
     try:
         for file in files:
-            if file.filename.endswith('.pdf'): merger.append(file.stream)
-            else: return jsonify({"error": f"File '{file.filename}' is not a PDF"}), 400
+            if file and allowed_file(file.filename) and file.filename.lower().endswith('.pdf'):
+                temp_path = create_temp_file(file, '.pdf')
+                temp_files.append(temp_path)
+                doc = fitz.open(temp_path)
+                merger.insert_pdf(doc)
+                doc.close()
+            else:
+                return jsonify({"error": f"Invalid file: {file.filename}"}), 400
+        
         output_stream = io.BytesIO()
-        merger.write(output_stream)
+        merger.save(output_stream)
         merger.close()
         output_stream.seek(0)
+        
         return send_file(output_stream, as_attachment=True, download_name='merged.pdf', mimetype='application/pdf')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+    
+    except Exception as e:
+        return jsonify({"error": f"Merge failed: {str(e)}"}), 500
+    finally:
+        cleanup_files(temp_files)
 
-# --- Feature 2: Split PDF ---
-@app.route('/api/split', methods=['POST'])
+@app.route('/api/split-pdf', methods=['POST'])
 def split_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
+    """Split PDF into multiple files or extract pages"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
     file = request.files['file']
-    start_page = request.form.get('start_page', type=int)
-    end_page = request.form.get('end_page', type=int)
-    if not start_page or not end_page or start_page < 1 or end_page < start_page:
-        return jsonify({"error": "Invalid page range"}), 400
+    split_type = request.form.get('type', 'range')  # range, even_odd, multiple
+    pages = request.form.get('pages', '')
+    
     try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        if end_page > len(reader.pages): return jsonify({"error": "End page exceeds total pages"}), 400
-        for i in range(start_page - 1, end_page): writer.add_page(reader.pages[i])
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        writer.close()
-        output_stream.seek(0)
-        return send_file(output_stream, as_attachment=True, download_name='split.pdf', mimetype='application/pdf')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        total_pages = len(doc)
+        
+        if split_type == 'range':
+            # Split by page range (e.g., "1-3,5-7")
+            page_ranges = []
+            for part in pages.split(','):
+                if '-' in part:
+                    start, end = map(int, part.split('-'))
+                    page_ranges.append((start-1, end-1))
+                else:
+                    page_num = int(part) - 1
+                    page_ranges.append((page_num, page_num))
+            
+            output_stream = io.BytesIO()
+            new_doc = fitz.open()
+            
+            for start, end in page_ranges:
+                for page_num in range(start, end + 1):
+                    if 0 <= page_num < total_pages:
+                        new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+            
+            new_doc.save(output_stream)
+            new_doc.close()
+            output_stream.seek(0)
+            return send_file(output_stream, as_attachment=True, download_name='split.pdf')
+        
+        elif split_type == 'even_odd':
+            # Create ZIP with even and odd pages
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                # Even pages
+                even_doc = fitz.open()
+                for page_num in range(1, total_pages, 2):  # 1-indexed even
+                    even_doc.insert_pdf(doc, from_page=page_num-1, to_page=page_num-1)
+                even_stream = io.BytesIO()
+                even_doc.save(even_stream)
+                even_doc.close()
+                zip_file.writestr('even_pages.pdf', even_stream.getvalue())
+                
+                # Odd pages
+                odd_doc = fitz.open()
+                for page_num in range(0, total_pages, 2):  # 0-indexed odd
+                    odd_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                odd_stream = io.BytesIO()
+                odd_doc.save(odd_stream)
+                odd_doc.close()
+                zip_file.writestr('odd_pages.pdf', odd_stream.getvalue())
+            
+            zip_buffer.seek(0)
+            return send_file(zip_buffer, as_attachment=True, download_name='split_pages.zip')
+        
+        elif split_type == 'multiple':
+            # Split into individual pages
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                for page_num in range(total_pages):
+                    single_doc = fitz.open()
+                    single_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                    page_stream = io.BytesIO()
+                    single_doc.save(page_stream)
+                    single_doc.close()
+                    zip_file.writestr(f'page_{page_num+1}.pdf', page_stream.getvalue())
+            
+            zip_buffer.seek(0)
+            return send_file(zip_buffer, as_attachment=True, download_name='individual_pages.zip')
+        
+        doc.close()
+        
+    except Exception as e:
+        return jsonify({"error": f"Split failed: {str(e)}"}), 500
 
-# --- Feature 3: PDF to Word ---
+@app.route('/api/compress-pdf', methods=['POST'])
+def compress_pdf():
+    """Compress PDF with different quality levels"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    quality = request.form.get('quality', 'medium')  # low, medium, high
+    
+    try:
+        # Using Ghostscript for compression
+        temp_input = create_temp_file(file, '.pdf')
+        temp_output = temp_input.replace('.pdf', '_compressed.pdf')
+        
+        quality_map = {
+            'low': '/screen',
+            'medium': '/ebook', 
+            'high': '/printer'
+        }
+        
+        command = [
+            'gs', '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4',
+            f'-dPDFSETTINGS={quality_map.get(quality, "/ebook")}',
+            '-dNOPAUSE', '-dQUIET', '-dBATCH',
+            f'-sOutputFile={temp_output}', temp_input
+        ]
+        
+        subprocess.run(command, check=True, capture_output=True)
+        
+        return send_file(temp_output, as_attachment=True, download_name='compressed.pdf')
+    
+    except Exception as e:
+        return jsonify({"error": f"Compression failed: {str(e)}"}), 500
+    finally:
+        cleanup_files([temp_input, temp_output])
+
+# === PDF CONVERSION TOOLS ===
+
 @app.route('/api/pdf-to-word', methods=['POST'])
 def pdf_to_word():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
-    if not file.filename.endswith('.pdf'): return jsonify({"error": "File is not a PDF"}), 400
-    temp_pdf_path, temp_docx_path = None, None
-    try:
-        temp_pdf_path = create_temp_file(file.stream, ".pdf")
-        temp_docx_path = temp_pdf_path.replace(".pdf", ".docx")
-        cv = Converter(temp_pdf_path)
-        cv.convert(temp_docx_path, start=0, end=None)
-        cv.close()
-        return send_file(temp_docx_path, as_attachment=True, download_name='converted.docx')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    finally: cleanup_files([temp_pdf_path, temp_docx_path])
-
-# --- Feature 4: Compress PDF (Requires Ghostscript) ---
-@app.route('/api/compress', methods=['POST'])
-def compress_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
-    if not file.filename.endswith('.pdf'): return jsonify({"error": "File is not a PDF"}), 400
-    temp_input_path, temp_output_path = None, None
-    try:
-        temp_input_path = create_temp_file(file.stream, ".pdf")
-        temp_output_path = temp_input_path.replace(".pdf", "_compressed.pdf")
-        # NOTE: 'gs' command (Ghostscript) server par install hona chahiye
-        command = ['gs', '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4', '-dPDFSETTINGS=/ebook',
-                   '-dNOPAUSE', '-dQUIET', '-dBATCH', f'-sOutputFile={temp_output_path}', temp_input_path]
-        subprocess.run(command, check=True)
-        return send_file(temp_output_path, as_attachment=True, download_name='compressed.pdf')
-    except FileNotFoundError: return jsonify({"error": "Ghostscript is not installed"}), 500
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    finally: cleanup_files([temp_input_path, temp_output_path])
-
-# --- Feature 5: JPG to PDF ---
-@app.route('/api/jpg-to-pdf', methods=['POST'])
-def jpg_to_pdf():
-    if 'files' not in request.files: return jsonify({"error": "No image files found"}), 400
-    files = request.files.getlist('files')
-    image_list = []
-    try:
-        for file in files:
-            if file.mimetype.startswith('image/'):
-                img = Image.open(file.stream).convert('RGB')
-                image_list.append(img)
-            else: return jsonify({"error": f"File '{file.filename}' is not an image"}), 400
-        if not image_list: return jsonify({"error": "No valid images to convert"}), 400
-        output_stream = io.BytesIO()
-        image_list[0].save(output_stream, "PDF", resolution=100.0, save_all=True, append_images=image_list[1:])
-        output_stream.seek(0)
-        return send_file(output_stream, as_attachment=True, download_name='converted.pdf', mimetype='application/pdf')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-# --- Feature 6: Rotate PDF ---
-@app.route('/api/rotate', methods=['POST'])
-def rotate_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
-    angle = request.form.get('angle', type=int)
-    if angle not in [90, 180, 270]:
-        return jsonify({"error": "Invalid rotation angle. Must be 90, 180, or 270"}), 400
-    try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        for page in reader.pages:
-            page.rotate(angle)
-            writer.add_page(page)
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        writer.close()
-        output_stream.seek(0)
-        return send_file(output_stream, as_attachment=True, download_name='rotated.pdf', mimetype='application/pdf')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-# --- Feature 7: Protect PDF ---
-@app.route('/api/protect', methods=['POST'])
-def protect_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
-    password = request.form.get('password')
-    if not password: return jsonify({"error": "Password not provided"}), 400
-    try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        for page in reader.pages: writer.add_page(page)
-        writer.encrypt(password) # Password lagana
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        writer.close()
-        output_stream.seek(0)
-        return send_file(output_stream, as_attachment=True, download_name='protected.pdf', mimetype='application/pdf')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-# --- Feature 8: Add Page Numbers ---
-@app.route('/api/add-page-numbers', methods=['POST'])
-def add_page_numbers():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
-    try:
-        input_pdf = PdfReader(file.stream)
-        output_writer = PdfWriter()
-        for i, page in enumerate(input_pdf.pages):
-            packet = io.BytesIO()
-            can = canvas.Canvas(packet, pagesize=letter)
-            can.drawString(275, 30, str(i + 1)) # Page number position
-            can.save()
-            packet.seek(0)
-            watermark_pdf = PdfReader(packet)
-            page.merge_page(watermark_pdf.pages[0])
-            output_writer.add_page(page)
-        output_stream = io.BytesIO()
-        output_writer.write(output_stream)
-        output_writer.close()
-        output_stream.seek(0)
-        return send_file(output_stream, as_attachment=True, download_name='page_numbered.pdf', mimetype='application/pdf')
-    except Exception as e: return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-# --- Feature 9: Add Watermark (New) ---
-@app.route('/api/add-watermark', methods=['POST'])
-def add_watermark():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
+    """Convert PDF to Word document"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    watermark_text = request.form.get('text')
-    if not watermark_text: return jsonify({"error": "Watermark text not provided"}), 400
     
     try:
-        input_pdf = PdfReader(file.stream)
-        output_writer = PdfWriter()
+        # Using PyMuPDF for text extraction
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         
-        # Watermark ka PDF banana
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
-        can.setFont("Helvetica", 50) # Font size
-        can.setFillColor(grey, alpha=0.3) # Color aur transparency
-        can.saveState()
-        can.translate(300, 450) # Position
-        can.rotate(45) # Angle
-        can.drawCentredString(0, 0, watermark_text)
-        can.restoreState()
-        can.save()
-        packet.seek(0)
-        watermark_pdf = PdfReader(packet)
-        watermark_page = watermark_pdf.pages[0]
-
-        for page in input_pdf.pages:
-            page.merge_page(watermark_page) # Har page par watermark merge karna
-            output_writer.add_page(page)
-
-        output_stream = io.BytesIO()
-        output_writer.write(output_stream)
-        output_writer.close()
-        output_stream.seek(0)
+        text_content = []
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text_content.append(page.get_text())
         
-        return send_file(output_stream, as_attachment=True, download_name='watermarked.pdf', mimetype='application/pdf')
+        doc.close()
+        
+        # Create simple Word document (for complex conversion, use python-docx)
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Paragraph
+        
+        docx_stream = io.BytesIO()
+        doc = SimpleDocTemplate(docx_stream, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        for text in text_content:
+            story.append(Paragraph(text.replace('\n', '<br/>'), styles['Normal']))
+        
+        doc.build(story)
+        docx_stream.seek(0)
+        
+        return send_file(docx_stream, as_attachment=True, download_name='converted.docx')
+    
     except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
 
-# --- Feature 10: Remove Pages (New) ---
-@app.route('/api/remove-pages', methods=['POST'])
-def remove_pages():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
+@app.route('/api/pdf-to-images', methods=['POST'])
+def pdf_to_images_api():
+    """Convert PDF to images (JPG/PNG)"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    # Pages to remove, comma-separated (e.g., "1,3,5-7")
-    pages_to_remove_str = request.form.get('pages')
-    if not pages_to_remove_str: return jsonify({"error": "Pages to remove not specified"}), 400
-
+    format_type = request.form.get('format', 'jpg')  # jpg or png
+    dpi = int(request.form.get('dpi', 150))
+    
     try:
-        # Page string ko parse karna (e.g., "1,3,5-7" -> {1, 3, 5, 6, 7})
-        pages_to_remove = set()
-        for part in pages_to_remove_str.split(','):
-            if '-' in part:
-                start, end = map(int, part.split('-'))
-                pages_to_remove.update(range(start, end + 1))
-            else:
-                pages_to_remove.add(int(part))
+        pdf_bytes = file.read()
+        images = pdf_to_images(pdf_bytes)
         
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        
-        for i in range(len(reader.pages)):
-            if (i + 1) not in pages_to_remove: # Page number 1-based hota hai
-                writer.add_page(reader.pages[i])
-
-        if len(writer.pages) == 0:
-            return jsonify({"error": "Cannot remove all pages"}), 400
+        if len(images) == 1:
+            # Single image
+            img_stream = io.BytesIO()
+            images[0].save(img_stream, format=format_type.upper(), quality=95)
+            img_stream.seek(0)
+            return send_file(img_stream, as_attachment=True, download_name=f'converted.{format_type}')
+        else:
+            # Multiple images - create ZIP
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                for i, img in enumerate(images):
+                    img_stream = io.BytesIO()
+                    img.save(img_stream, format=format_type.upper(), quality=95)
+                    zip_file.writestr(f'page_{i+1}.{format_type}', img_stream.getvalue())
             
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        writer.close()
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name='pages_removed.pdf', mimetype='application/pdf')
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-# --- Feature 11: PDF to JPG (Requires Poppler) (New) ---
-@app.route('/api/pdf-to-jpg', methods=['POST'])
-def pdf_to_jpg():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
+            zip_buffer.seek(0)
+            return send_file(zip_buffer, as_attachment=True, download_name='converted_pages.zip')
     
-    temp_dir = None
+    except Exception as e:
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
+
+@app.route('/api/images-to-pdf', methods=['POST'])
+def images_to_pdf():
+    """Convert multiple images to PDF"""
+    if 'files' not in request.files:
+        return jsonify({"error": "No files uploaded"}), 400
+    
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({"error": "No valid images"}), 400
+    
     try:
-        # NOTE: 'poppler' library server par install honi chahiye
-        images = convert_from_bytes(file.read())
+        images = []
+        for file in files:
+            if file and allowed_file(file.filename):
+                img = Image.open(file.stream)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                images.append(img)
         
         if not images:
-            return jsonify({"error": "Could not convert PDF to images"}), 500
-
-        # Agar ek hi image hai, toh direct bhej do
-        if len(images) == 1:
-            img_io = io.BytesIO()
-            images[0].save(img_io, format='JPEG')
-            img_io.seek(0)
-            return send_file(img_io, as_attachment=True, download_name='converted.jpg', mimetype='image/jpeg')
-
-        # Agar multiple images hain, toh ZIP file banao
-        zip_io = io.BytesIO()
-        with zipfile.ZipFile(zip_io, 'w') as zf:
-            for i, image in enumerate(images):
-                img_io = io.BytesIO()
-                image.save(img_io, format='JPEG')
-                img_io.seek(0)
-                zf.writestr(f'page_{i+1}.jpg', img_io.getvalue())
+            return jsonify({"error": "No valid images found"}), 400
         
-        zip_io.seek(0)
-        return send_file(zip_io, as_attachment=True, download_name='converted_images.zip', mimetype='application/zip')
+        # Create PDF
+        pdf_stream = io.BytesIO()
+        images[0].save(pdf_stream, "PDF", resolution=100.0, save_all=True, 
+                      append_images=images[1:])
+        pdf_stream.seek(0)
         
+        return send_file(pdf_stream, as_attachment=True, download_name='converted.pdf')
+    
     except Exception as e:
-        # Poppler install nahi hone par bhi yahaan error aa sakta hai
-        return jsonify({"error": f"An error occurred. Is Poppler installed? Error: {str(e)}"}), 500
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
 
-# --- Feature 12: Unlock PDF (Requires QPDF) (New) ---
-@app.route('/api/unlock', methods=['POST'])
-def unlock_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
-    file = request.files['file']
-    password = request.form.get('password', '') # Password optional hai
+# === PDF SECURITY TOOLS ===
 
-    temp_input_path, temp_output_path = None, None
-    try:
-        temp_input_path = create_temp_file(file.stream, ".pdf")
-        temp_output_path = temp_input_path.replace(".pdf", "_unlocked.pdf")
-        
-        # NOTE: 'qpdf' command server par install hona chahiye
-        command = [
-            'qpdf',
-            '--decrypt',
-            f'--password={password}',
-            temp_input_path,
-            temp_output_path
-        ]
-        
-        result = subprocess.run(command, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            if "invalid password" in result.stderr:
-                return jsonify({"error": "Invalid password"}), 400
-            return jsonify({"error": f"QPDF error: {result.stderr}"}), 500
-        
-        return send_file(temp_output_path, as_attachment=True, download_name='unlocked.pdf')
+@app.route('/api/protect-pdf', methods=['POST'])
+def protect_pdf():
+    """Add password protection to PDF"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
     
-    except FileNotFoundError:
-        return jsonify({"error": "QPDF is not installed on the server"}), 500
+    file = request.files['file']
+    password = request.form.get('password', '')
+    owner_password = request.form.get('owner_password', '')
+    permissions = int(request.form.get('permissions', 0))  # Bitmask for permissions
+    
+    if not password:
+        return jsonify({"error": "Password required"}), 400
+    
+    try:
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        # Set encryption
+        encrypt_meth = 1  # PDF 1.4 encryption
+        perm = permissions  # Permissions bitmask
+        
+        doc.save(None, encryption=encrypt_meth, user_pw=password, 
+                owner_pw=owner_password or None, permissions=perm)
+        
+        output_stream = io.BytesIO()
+        doc.save(output_stream)
+        doc.close()
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name='protected.pdf')
+    
     except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-    finally:
-        cleanup_files([temp_input_path, temp_output_path])
+        return jsonify({"error": f"Protection failed: {str(e)}"}), 500
 
-# --- Office to PDF Features (Requires LibreOffice) ---
-# Yeh sabse complex features hain. Server par LibreOffice install hona zaroori hai.
-
-def office_to_pdf_converter(file, input_suffix):
-    temp_input_path, temp_output_dir = None, None
-    try:
-        temp_input_path = create_temp_file(file.stream, input_suffix)
-        temp_output_dir = tempfile.mkdtemp() # Output ke liye ek directory
-        
-        # NOTE: 'libreoffice' command server par install hona chahiye
-        command = [
-            'libreoffice',
-            '--headless', # Bina UI ke chalao
-            '--convert-to', 'pdf',
-            '--outdir', temp_output_dir,
-            temp_input_path
-        ]
-        
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-
-        if result.returncode != 0:
-            return None, f"LibreOffice error: {result.stderr}"
-
-        # Output file ka naam dhoondna
-        output_filename = os.path.splitext(os.path.basename(temp_input_path))[0] + '.pdf'
-        output_pdf_path = os.path.join(temp_output_dir, output_filename)
-        
-        if not os.path.exists(output_pdf_path):
-            return None, "Converted file not found"
-        
-        return output_pdf_path, None # Success
+@app.route('/api/remove-password', methods=['POST'])
+def remove_password():
+    """Remove password protection from PDF"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
     
-    except FileNotFoundError:
-        return None, "LibreOffice is not installed on the server"
-    except subprocess.TimeoutExpired:
-        return None, "Conversion timed out (30 seconds)"
+    file = request.files['file']
+    password = request.form.get('password', '')
+    
+    try:
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        if doc.is_encrypted:
+            if not doc.authenticate(password):
+                return jsonify({"error": "Invalid password"}), 401
+        
+        output_stream = io.BytesIO()
+        doc.save(output_stream)
+        doc.close()
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name='unlocked.pdf')
+    
     except Exception as e:
-        return None, f"An error occurred: {str(e)}"
-    finally:
-        # Input file delete karna, output directory (aur file) ko nahi
-        cleanup_files([temp_input_path]) 
+        return jsonify({"error": f"Password removal failed: {str(e)}"}), 500
 
-# --- Feature 13: Word to PDF (Requires LibreOffice) (New) ---
-@app.route('/api/word-to-pdf', methods=['POST'])
-def word_to_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
+@app.route('/api/encrypt-file', methods=['POST'])
+def encrypt_file():
+    """Encrypt any file with AES encryption"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
     file = request.files['file']
-    if not file.filename.endswith(('.doc', '.docx')):
-        return jsonify({"error": "File is not a Word document"}), 400
+    password = request.form.get('password', '')
     
-    output_pdf_path, error = office_to_pdf_converter(file, ".docx")
-    
-    if error:
-        return jsonify({"error": error}), 500
+    if not password:
+        return jsonify({"error": "Password required"}), 400
     
     try:
-        return send_file(output_pdf_path, as_attachment=True, download_name='converted.pdf')
-    finally:
-        cleanup_dir(os.path.dirname(output_pdf_path)) # Poori directory delete karna
+        file_data = file.read()
+        
+        # Derive key from password
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        import os
+        
+        salt = os.urandom(16)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+        fernet = Fernet(key)
+        
+        encrypted_data = fernet.encrypt(file_data)
+        
+        # Combine salt + encrypted data
+        final_data = salt + encrypted_data
+        
+        output_stream = io.BytesIO(final_data)
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name=f'encrypted_{file.filename}')
+    
+    except Exception as e:
+        return jsonify({"error": f"Encryption failed: {str(e)}"}), 500
 
-# --- Feature 14: Excel to PDF (Requires LibreOffice) (New) ---
-@app.route('/api/excel-to-pdf', methods=['POST'])
-def excel_to_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
+@app.route('/api/decrypt-file', methods=['POST'])
+def decrypt_file():
+    """Decrypt AES encrypted file"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
     file = request.files['file']
-    if not file.filename.endswith(('.xls', '.xlsx')):
-        return jsonify({"error": "File is not an Excel document"}), 400
+    password = request.form.get('password', '')
     
-    output_pdf_path, error = office_to_pdf_converter(file, ".xlsx")
-    
-    if error:
-        return jsonify({"error": error}), 500
+    if not password:
+        return jsonify({"error": "Password required"}), 400
     
     try:
-        return send_file(output_pdf_path, as_attachment=True, download_name='converted.pdf')
-    finally:
-        cleanup_dir(os.path.dirname(output_pdf_path))
+        file_data = file.read()
+        
+        # Extract salt and encrypted data
+        salt = file_data[:16]
+        encrypted_data = file_data[16:]
+        
+        # Derive key from password
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+        fernet = Fernet(key)
+        
+        decrypted_data = fernet.decrypt(encrypted_data)
+        
+        output_stream = io.BytesIO(decrypted_data)
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name=f'decrypted_{file.filename}')
+    
+    except Exception as e:
+        return jsonify({"error": f"Decryption failed: {str(e)}"}), 500
 
-# --- Feature 15: PPT to PDF (Requires LibreOffice) (New) ---
-@app.route('/api/ppt-to-pdf', methods=['POST'])
-def ppt_to_pdf():
-    if 'file' not in request.files: return jsonify({"error": "No file found"}), 400
+# === IMAGE TOOLS ===
+
+@app.route('/api/compress-image', methods=['POST'])
+def compress_image():
+    """Compress image with quality control"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
     file = request.files['file']
-    if not file.filename.endswith(('.ppt', '.pptx')):
-        return jsonify({"error": "File is not a PowerPoint document"}), 400
-    
-    output_pdf_path, error = office_to_pdf_converter(file, ".pptx")
-    
-    if error:
-        return jsonify({"error": error}), 500
+    quality = int(request.form.get('quality', 85))
+    format_type = request.form.get('format', 'JPEG')
     
     try:
-        return send_file(output_pdf_path, as_attachment=True, download_name='converted.pdf')
-    finally:
-        cleanup_dir(os.path.dirname(output_pdf_path))
+        img = Image.open(file.stream)
+        
+        # Convert to RGB if necessary
+        if format_type.upper() == 'JPEG' and img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        output_stream = io.BytesIO()
+        img.save(output_stream, format=format_type, quality=quality, optimize=True)
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name=f'compressed.{format_type.lower()}')
+    
+    except Exception as e:
+        return jsonify({"error": f"Compression failed: {str(e)}"}), 500
 
-# --- Server ko Run Karna ---
+@app.route('/api/resize-image', methods=['POST'])
+def resize_image():
+    """Resize image with different modes"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    width = int(request.form.get('width', 0))
+    height = int(request.form.get('height', 0))
+    maintain_ratio = request.form.get('maintain_ratio', 'true').lower() == 'true'
+    resize_mode = request.form.get('mode', 'fit')  # fit, fill, crop
+    
+    try:
+        img = Image.open(file.stream)
+        original_width, original_height = img.size
+        
+        if width <= 0 and height <= 0:
+            return jsonify({"error": "Invalid dimensions"}), 400
+        
+        if maintain_ratio:
+            if width > 0 and height > 0:
+                # Maintain aspect ratio
+                ratio = min(width/original_width, height/original_height)
+                new_width = int(original_width * ratio)
+                new_height = int(original_height * ratio)
+            elif width > 0:
+                ratio = width / original_width
+                new_height = int(original_height * ratio)
+                new_width = width
+            else:
+                ratio = height / original_height
+                new_width = int(original_width * ratio)
+                new_height = height
+        else:
+            new_width = width if width > 0 else original_width
+            new_height = height if height > 0 else original_height
+        
+        if resize_mode == 'crop':
+            # Crop to exact dimensions
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            left = (new_width - width) / 2
+            top = (new_height - height) / 2
+            right = (new_width + width) / 2
+            bottom = (new_height + height) / 2
+            img = img.crop((left, top, right, bottom))
+        else:
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        output_stream = io.BytesIO()
+        img.save(output_stream, format=img.format or 'JPEG', quality=95)
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name='resized_image.jpg')
+    
+    except Exception as e:
+        return jsonify({"error": f"Resize failed: {str(e)}"}), 500
+
+@app.route('/api/convert-image', methods=['POST'])
+def convert_image():
+    """Convert image between different formats"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    target_format = request.form.get('format', 'JPEG').upper()
+    
+    try:
+        img = Image.open(file.stream)
+        
+        # Handle format-specific conversions
+        if target_format == 'JPEG' and img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        elif target_format == 'PNG' and img.mode == 'RGB':
+            img = img.convert('RGBA')
+        
+        output_stream = io.BytesIO()
+        img.save(output_stream, format=target_format, quality=95)
+        output_stream.seek(0)
+        
+        ext_map = {'JPEG': 'jpg', 'PNG': 'png', 'BMP': 'bmp', 'TIFF': 'tiff', 'WEBP': 'webp'}
+        ext = ext_map.get(target_format, target_format.lower())
+        
+        return send_file(output_stream, as_attachment=True, download_name=f'converted.{ext}')
+    
+    except Exception as e:
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
+
+# === ADVANCED PDF TOOLS ===
+
+@app.route('/api/add-watermark', methods=['POST'])
+def add_watermark():
+    """Add text or image watermark to PDF"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    watermark_type = request.form.get('type', 'text')  # text or image
+    text = request.form.get('text', 'CONFIDENTIAL')
+    opacity = float(request.form.get('opacity', 0.3))
+    position = request.form.get('position', 'center')  # center, diagonal, etc.
+    
+    try:
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            
+            if watermark_type == 'text':
+                # Add text watermark
+                rect = page.rect
+                font_size = 60
+                
+                # Calculate position
+                if position == 'diagonal':
+                    # Diagonal across page
+                    points = [(rect.width * 0.1, rect.height * 0.1), 
+                             (rect.width * 0.9, rect.height * 0.9)]
+                else:  # center
+                    points = [(rect.width / 2, rect.height / 2)]
+                
+                for x, y in points:
+                    page.insert_text(
+                        (x, y), text, fontsize=font_size, 
+                        color=(0.5, 0.5, 0.5),  # Gray color
+                        rotate=45,  # Diagonal text
+                        overlay=True
+                    )
+            elif watermark_type == 'image' and 'watermark_file' in request.files:
+                # Add image watermark
+                watermark_file = request.files['watermark_file']
+                img = Image.open(watermark_file.stream)
+                img_bytes = io.BytesIO()
+                img.save(img_bytes, format='PNG')
+                
+                # Calculate position
+                rect = page.rect
+                if position == 'center':
+                    x = (rect.width - img.width) / 2
+                    y = (rect.height - img.height) / 2
+                else:
+                    x, y = 50, 50  # Top-left
+                
+                page.insert_image(
+                    fitz.Rect(x, y, x + img.width, y + img.height),
+                    stream=img_bytes.getvalue()
+                )
+        
+        output_stream = io.BytesIO()
+        doc.save(output_stream)
+        doc.close()
+        output_stream.seek(0)
+        
+        return send_file(output_stream, as_attachment=True, download_name='watermarked.pdf')
+    
+    except Exception as e:
+        return jsonify({"error": f"Watermark failed: {str(e)}"}), 500
+
+@app.route('/api/extract-text', methods=['POST'])
+def extract_text():
+    """Extract text from PDF or images (OCR)"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    use_ocr = request.form.get('ocr', 'false').lower() == 'true'
+    
+    try:
+        if file.filename.lower().endswith('.pdf'):
+            # PDF text extraction
+            pdf_bytes = file.read()
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            
+            text_data = {}
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = page.get_text()
+                text_data[f"page_{page_num + 1}"] = text
+            
+            doc.close()
+            
+            return jsonify({
+                "success": True,
+                "total_pages": len(text_data),
+                "text": text_data
+            })
+        
+        else:
+            # Image OCR
+            img = Image.open(file.stream)
+            
+            if use_ocr:
+                # Use Tesseract OCR
+                try:
+                    text = pytesseract.image_to_string(img)
+                    return jsonify({
+                        "success": True,
+                        "text": text,
+                        "method": "ocr"
+                    })
+                except:
+                    return jsonify({"error": "OCR failed. Tesseract not installed."}), 500
+            else:
+                return jsonify({"error": "OCR required for image text extraction"}), 400
+    
+    except Exception as e:
+        return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
+
+@app.route('/api/repair-pdf', methods=['POST'])
+def repair_pdf():
+    """Attempt to repair corrupted PDF"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    
+    try:
+        # Method 1: Try to open and save with PyMuPDF
+        pdf_bytes = file.read()
+        
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            output_stream = io.BytesIO()
+            doc.save(output_stream)
+            doc.close()
+            output_stream.seek(0)
+            
+            return send_file(output_stream, as_attachment=True, download_name='repaired.pdf')
+        
+        except:
+            # Method 2: Use Ghostscript for repair
+            temp_input = create_temp_file(io.BytesIO(pdf_bytes), '.pdf')
+            temp_output = temp_input.replace('.pdf', '_repaired.pdf')
+            
+            command = [
+                'gs', '-o', temp_output, '-sDEVICE=pdfwrite', 
+                '-dPDFSETTINGS=/prepress', temp_input
+            ]
+            
+            subprocess.run(command, check=True, capture_output=True)
+            
+            return send_file(temp_output, as_attachment=True, download_name='repaired.pdf')
+    
+    except Exception as e:
+        return jsonify({"error": f"Repair failed: {str(e)}"}), 500
+    finally:
+        cleanup_files([temp_input, temp_output])
+
+# === UTILITY ENDPOINTS ===
+
+@app.route('/')
+def home():
+    return jsonify({
+        "message": "Ultimate PDF & Image Tools API",
+        "version": "2.0",
+        "endpoints": {
+            "pdf_tools": [
+                "/api/merge-pdf", "/api/split-pdf", "/api/compress-pdf",
+                "/api/protect-pdf", "/api/remove-password", "/api/add-watermark",
+                "/api/repair-pdf", "/api/extract-text"
+            ],
+            "conversion": [
+                "/api/pdf-to-word", "/api/pdf-to-images", "/api/images-to-pdf"
+            ],
+            "security": [
+                "/api/encrypt-file", "/api/decrypt-file"
+            ],
+            "image_tools": [
+                "/api/compress-image", "/api/resize-image", "/api/convert-image"
+            ]
+        }
+    })
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy", "service": "PDF Tools API"})
+
+# Error handlers
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "File too large. Maximum size is 100MB"}), 413
+
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({"error": "Internal server error"}), 500
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)

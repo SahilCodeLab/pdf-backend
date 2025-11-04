@@ -6,7 +6,6 @@ import shutil
 import zipfile
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
-from PIL import Image
 from pypdf import PdfMerger, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, A4
@@ -20,9 +19,6 @@ CORS(app)
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'pdf', 'jpg', 'jpeg', 'png'}
 
 # Helper Functions
 def create_temp_file(file_stream, suffix):
@@ -39,6 +35,7 @@ def cleanup_files(files_list):
 
 @app.route('/api/merge-pdf', methods=['POST'])
 def merge_pdf():
+    """Merge multiple PDF files"""
     if 'files' not in request.files:
         return jsonify({"error": "No files uploaded"}), 400
     
@@ -65,6 +62,7 @@ def merge_pdf():
 
 @app.route('/api/split-pdf', methods=['POST'])
 def split_pdf():
+    """Split PDF by page range"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -94,6 +92,7 @@ def split_pdf():
 
 @app.route('/api/compress-pdf', methods=['POST'])
 def compress_pdf():
+    """Compress PDF using Ghostscript"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -126,6 +125,7 @@ def compress_pdf():
 
 @app.route('/api/protect-pdf', methods=['POST'])
 def protect_pdf():
+    """Add password protection to PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -155,6 +155,7 @@ def protect_pdf():
 
 @app.route('/api/remove-password', methods=['POST'])
 def remove_password():
+    """Remove password protection from PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -183,6 +184,7 @@ def remove_password():
 
 @app.route('/api/rotate-pdf', methods=['POST'])
 def rotate_pdf():
+    """Rotate PDF pages"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -209,103 +211,91 @@ def rotate_pdf():
     except Exception as e:
         return jsonify({"error": f"Rotation failed: {str(e)}"}), 500
 
-# === IMAGE TO PDF ===
-
-@app.route('/api/images-to-pdf', methods=['POST'])
-def images_to_pdf():
-    if 'files' not in request.files:
-        return jsonify({"error": "No files uploaded"}), 400
-    
-    files = request.files.getlist('files')
-    
-    try:
-        images = []
-        for file in files:
-            if file and allowed_file(file.filename):
-                img = Image.open(file.stream)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                images.append(img)
-        
-        if not images:
-            return jsonify({"error": "No valid images found"}), 400
-        
-        pdf_stream = io.BytesIO()
-        images[0].save(pdf_stream, "PDF", resolution=100.0, save_all=True, append_images=images[1:])
-        pdf_stream.seek(0)
-        
-        return send_file(pdf_stream, as_attachment=True, download_name='converted.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
-
-# === IMAGE TOOLS ===
-
-@app.route('/api/compress-image', methods=['POST'])
-def compress_image():
+@app.route('/api/add-watermark', methods=['POST'])
+def add_watermark():
+    """Add text watermark to PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    quality = request.form.get('quality', type=int, default=85)
+    watermark_text = request.form.get('text', 'CONFIDENTIAL')
     
     try:
-        img = Image.open(file.stream)
+        reader = PdfReader(file.stream)
+        writer = PdfWriter()
         
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
+        for page_num in range(len(reader.pages)):
+            # Create watermark
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=letter)
+            can.setFont("Helvetica", 40)
+            can.setFillColorRGB(0.5, 0.5, 0.5, alpha=0.3)  # Gray with transparency
+            can.translate(300, 400)
+            can.rotate(45)
+            can.drawString(0, 0, watermark_text)
+            can.save()
+            
+            packet.seek(0)
+            watermark_reader = PdfReader(packet)
+            watermark_page = watermark_reader.pages[0]
+            
+            # Merge with original page
+            original_page = reader.pages[page_num]
+            original_page.merge_page(watermark_page)
+            writer.add_page(original_page)
         
         output_stream = io.BytesIO()
-        img.save(output_stream, format='JPEG', quality=quality, optimize=True)
+        writer.write(output_stream)
         output_stream.seek(0)
         
-        return send_file(output_stream, as_attachment=True, download_name='compressed.jpg', mimetype='image/jpeg')
+        return send_file(output_stream, as_attachment=True, download_name='watermarked.pdf', mimetype='application/pdf')
     
     except Exception as e:
-        return jsonify({"error": f"Compression failed: {str(e)}"}), 500
+        return jsonify({"error": f"Watermark failed: {str(e)}"}), 500
 
-@app.route('/api/resize-image', methods=['POST'])
-def resize_image():
+@app.route('/api/add-page-numbers', methods=['POST'])
+def add_page_numbers():
+    """Add page numbers to PDF"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    width = request.form.get('width', type=int, default=0)
-    height = request.form.get('height', type=int, default=0)
     
     try:
-        img = Image.open(file.stream)
-        original_width, original_height = img.size
+        reader = PdfReader(file.stream)
+        writer = PdfWriter()
         
-        if width <= 0 and height <= 0:
-            return jsonify({"error": "Provide width or height"}), 400
-        
-        if width > 0 and height > 0:
-            new_size = (width, height)
-        elif width > 0:
-            ratio = width / original_width
-            new_height = int(original_height * ratio)
-            new_size = (width, new_height)
-        else:
-            ratio = height / original_height
-            new_width = int(original_width * ratio)
-            new_size = (new_width, height)
-        
-        img = img.resize(new_size, Image.Resampling.LANCZOS)
+        for page_num in range(len(reader.pages)):
+            # Create page number
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=letter)
+            can.setFont("Helvetica", 12)
+            can.drawString(300, 20, str(page_num + 1))  # Bottom center
+            can.save()
+            
+            packet.seek(0)
+            number_reader = PdfReader(packet)
+            number_page = number_reader.pages[0]
+            
+            # Merge with original page
+            original_page = reader.pages[page_num]
+            original_page.merge_page(number_page)
+            writer.add_page(original_page)
         
         output_stream = io.BytesIO()
-        img.save(output_stream, format='JPEG', quality=95)
+        writer.write(output_stream)
         output_stream.seek(0)
         
-        return send_file(output_stream, as_attachment=True, download_name='resized.jpg', mimetype='image/jpeg')
+        return send_file(output_stream, as_attachment=True, download_name='numbered.pdf', mimetype='application/pdf')
     
     except Exception as e:
-        return jsonify({"error": f"Resize failed: {str(e)}"}), 500
+        return jsonify({"error": f"Page numbering failed: {str(e)}"}), 500
 
 # === SECURITY TOOLS ===
 
 @app.route('/api/encrypt-file', methods=['POST'])
 def encrypt_file():
+    """Encrypt any file with AES"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -341,6 +331,7 @@ def encrypt_file():
 
 @app.route('/api/decrypt-file', methods=['POST'])
 def decrypt_file():
+    """Decrypt AES encrypted file"""
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     
@@ -381,7 +372,7 @@ def decrypt_file():
 def home():
     return jsonify({
         "message": "PDF Tools API is running!",
-        "version": "2.0",
+        "version": "3.0",
         "status": "healthy",
         "endpoints": {
             "pdf_tools": [
@@ -390,12 +381,9 @@ def home():
                 "/api/compress-pdf - Compress PDF",
                 "/api/protect-pdf - Password Protect PDF",
                 "/api/remove-password - Remove PDF Password",
-                "/api/rotate-pdf - Rotate PDF"
-            ],
-            "image_tools": [
-                "/api/images-to-pdf - Images to PDF",
-                "/api/compress-image - Compress Image",
-                "/api/resize-image - Resize Image"
+                "/api/rotate-pdf - Rotate PDF",
+                "/api/add-watermark - Add Watermark",
+                "/api/add-page-numbers - Add Page Numbers"
             ],
             "security": [
                 "/api/encrypt-file - Encrypt File",

@@ -101,8 +101,9 @@ def generate_pdf():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-        
-        if __name__ == '__main__':
+
+if __name__ == '__main__':
+    # YEH LINE FIX KARO - PROPER INDENTATION
     if not os.path.exists('generated_pdfs'):
         os.makedirs('generated_pdfs')
     app.run(debug=True)

@@ -1,324 +1,108 @@
+from flask import Flask, request, jsonify, send_file
+from fpdf import FPDF
+import re
 import os
-import io
-from flask import Flask, request, send_file, jsonify
-from flask_cors import CORS
-from pypdf import PdfMerger, PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)
 
-# Configuration
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+class SmartPDF(FPDF):
+    def footer(self):
+        # Page number
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 10)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-# === PDF TOOLS ===
-
-@app.route('/api/merge-pdf', methods=['POST'])
-def merge_pdf():
-    """Merge multiple PDF files"""
-    if 'files' not in request.files:
-        return jsonify({"error": "No files uploaded"}), 400
+def parse_bulk_text(text):
+    """Bulk text ko automatically parse karega"""
+    qa_pairs = []
     
-    files = request.files.getlist('files')
-    if len(files) < 2:
-        return jsonify({"error": "At least 2 PDF files required"}), 400
-
-    merger = PdfMerger()
+    # Multiple formats handle karega
+    patterns = [
+        r'(\d+)[\.\)]\s*(.*?)\n(.*?)(?=\n\d+[\.\)]|\Z)',  # 1. Question\nAnswer
+        r'Q\d*[:\.]?\s*(.*?)\nA\d*[:\.]?\s*(.*?)(?=\nQ|\Z)',  # Q1: Question\nA1: Answer
+    ]
     
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
+        if matches:
+            for match in matches:
+                if len(match) >= 2:
+                    if pattern == patterns[0]:  # Number. Format
+                        q_num = match[0]
+                        question = match[1].strip()
+                        answer = match[2].strip() if len(match) > 2 else ""
+                    else:  # Q/A Format
+                        question = match[0].strip()
+                        answer = match[1].strip() if len(match) > 1 else ""
+                    
+                    # Clean text
+                    answer = re.sub(r'\n+', ' ', answer)
+                    answer = re.sub(r'\s+', ' ', answer).strip()
+                    
+                    if question and answer:
+                        qa_pairs.append((question, answer))
+            break
+    
+    return qa_pairs
+
+@app.route('/generate_pdf', methods=['POST'])
+def generate_pdf():
     try:
-        for file in files:
-            if file and file.filename.lower().endswith('.pdf'):
-                merger.append(file.stream)
-            else:
-                return jsonify({"error": f"Invalid file: {file.filename}"}), 400
+        data = request.json
+        subject = data.get('subject', 'Study Notes')
+        filename = data.get('filename', 'notes')
+        bulk_text = data.get('bulk_text', '')
+        individual_qa = data.get('individual_qa', [])
         
-        output_stream = io.BytesIO()
-        merger.write(output_stream)
-        merger.close()
-        output_stream.seek(0)
+        # PDF banaye
+        pdf = SmartPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", size=12)
         
-        return send_file(output_stream, as_attachment=True, download_name='merged.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Merge failed: {str(e)}"}), 500
-
-@app.route('/api/split-pdf', methods=['POST'])
-def split_pdf():
-    """Split PDF by page range"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    start_page = request.form.get('start_page', type=int, default=1)
-    end_page = request.form.get('end_page', type=int, default=1)
-    
-    try:
-        reader = PdfReader(file.stream)
-        total_pages = len(reader.pages)
+        # Title
+        pdf.cell(200, 10, txt=f"{subject}", ln=True, align='C')
+        pdf.ln(10)
         
-        if start_page < 1 or end_page > total_pages or start_page > end_page:
-            return jsonify({"error": f"Invalid page range. Total pages: {total_pages}"}), 400
+        # Data process karega
+        if bulk_text:
+            # Bulk text process karega
+            qa_pairs = parse_bulk_text(bulk_text)
+        else:
+            # Individual Q/A use karega
+            qa_pairs = individual_qa
         
-        writer = PdfWriter()
-        for i in range(start_page-1, end_page):
-            writer.add_page(reader.pages[i])
+        if not qa_pairs:
+            return jsonify({'error': 'No valid questions found'}), 400
         
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name='split.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Split failed: {str(e)}"}), 500
-
-@app.route('/api/protect-pdf', methods=['POST'])
-def protect_pdf():
-    """Add password protection to PDF"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    password = request.form.get('password', '')
-    
-    if not password:
-        return jsonify({"error": "Password required"}), 400
-    
-    try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        
-        for page in reader.pages:
-            writer.add_page(page)
-        
-        writer.encrypt(password)
-        
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name='protected.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Protection failed: {str(e)}"}), 500
-
-@app.route('/api/remove-password', methods=['POST'])
-def remove_password():
-    """Remove password protection from PDF"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    password = request.form.get('password', '')
-    
-    try:
-        reader = PdfReader(file.stream)
-        
-        if reader.is_encrypted:
-            if not reader.decrypt(password):
-                return jsonify({"error": "Invalid password"}), 401
-        
-        writer = PdfWriter()
-        for page in reader.pages:
-            writer.add_page(page)
-        
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name='unlocked.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Password removal failed: {str(e)}"}), 500
-
-@app.route('/api/rotate-pdf', methods=['POST'])
-def rotate_pdf():
-    """Rotate PDF pages"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    angle = request.form.get('angle', type=int, default=90)
-    
-    if angle not in [90, 180, 270]:
-        return jsonify({"error": "Angle must be 90, 180, or 270"}), 400
-    
-    try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        
-        for page in reader.pages:
-            page.rotate(angle)
-            writer.add_page(page)
-        
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name='rotated.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Rotation failed: {str(e)}"}), 500
-
-@app.route('/api/add-watermark', methods=['POST'])
-def add_watermark():
-    """Add text watermark to PDF"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    watermark_text = request.form.get('text', 'CONFIDENTIAL')
-    
-    try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
-        
-        for page_num in range(len(reader.pages)):
-            # Create watermark
-            packet = io.BytesIO()
-            can = canvas.Canvas(packet, pagesize=letter)
-            can.setFont("Helvetica", 40)
-            can.setFillColorRGB(0.5, 0.5, 0.5, alpha=0.3)
-            can.translate(300, 400)
-            can.rotate(45)
-            can.drawString(0, 0, watermark_text)
-            can.save()
+        # Content add karega
+        for i, (question, answer) in enumerate(qa_pairs, 1):
+            # Page break check
+            if pdf.get_y() > 250:
+                pdf.add_page()
             
-            packet.seek(0)
-            watermark_reader = PdfReader(packet)
-            watermark_page = watermark_reader.pages[0]
+            # Question (Bold)
+            pdf.set_font("Arial", "B", 12)
+            if not question.startswith(str(i)):
+                question = f"{i}. {question}"
+            pdf.multi_cell(0, 10, question)
             
-            # Merge with original page
-            original_page = reader.pages[page_num]
-            original_page.merge_page(watermark_page)
-            writer.add_page(original_page)
+            # Answer (Normal)
+            pdf.set_font("Arial", size=12)
+            pdf.multi_cell(0, 8, answer)
+            pdf.ln(5)
         
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        output_stream.seek(0)
+        # Save karega
+        file_path = f"generated_pdfs/{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        pdf.output(file_path)
         
-        return send_file(output_stream, as_attachment=True, download_name='watermarked.pdf', mimetype='application/pdf')
-    
+        return send_file(file_path, as_attachment=True)
+        
     except Exception as e:
-        return jsonify({"error": f"Watermark failed: {str(e)}"}), 500
-
-@app.route('/api/add-page-numbers', methods=['POST'])
-def add_page_numbers():
-    """Add page numbers to PDF"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    
-    try:
-        reader = PdfReader(file.stream)
-        writer = PdfWriter()
+        return jsonify({'error': str(e)}), 500
         
-        for page_num in range(len(reader.pages)):
-            # Create page number
-            packet = io.BytesIO()
-            can = canvas.Canvas(packet, pagesize=letter)
-            can.setFont("Helvetica", 12)
-            can.drawString(300, 20, str(page_num + 1))
-            can.save()
-            
-            packet.seek(0)
-            number_reader = PdfReader(packet)
-            number_page = number_reader.pages[0]
-            
-            # Merge with original page
-            original_page = reader.pages[page_num]
-            original_page.merge_page(number_page)
-            writer.add_page(original_page)
-        
-        output_stream = io.BytesIO()
-        writer.write(output_stream)
-        output_stream.seek(0)
-        
-        return send_file(output_stream, as_attachment=True, download_name='numbered.pdf', mimetype='application/pdf')
-    
-    except Exception as e:
-        return jsonify({"error": f"Page numbering failed: {str(e)}"}), 500
-
-@app.route('/api/extract-text', methods=['POST'])
-def extract_text():
-    """Extract text from PDF"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    
-    try:
-        reader = PdfReader(file.stream)
-        text_data = {}
-        
-        for page_num in range(len(reader.pages)):
-            page = reader.pages[page_num]
-            text = page.extract_text()
-            text_data[f"page_{page_num + 1}"] = text
-        
-        return jsonify({
-            "success": True,
-            "total_pages": len(text_data),
-            "text": text_data
-        })
-    
-    except Exception as e:
-        return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
-
-@app.route('/api/get-pdf-info', methods=['POST'])
-def get_pdf_info():
-    """Get PDF information"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    
-    try:
-        reader = PdfReader(file.stream)
-        
-        info = {
-            "total_pages": len(reader.pages),
-            "is_encrypted": reader.is_encrypted,
-            "metadata": reader.metadata
-        }
-        
-        return jsonify({
-            "success": True,
-            "info": info
-        })
-    
-    except Exception as e:
-        return jsonify({"error": f"Info extraction failed: {str(e)}"}), 500
-
-# === HEALTH CHECK ===
-
-@app.route('/')
-def home():
-    return jsonify({
-        "message": "PDF Tools API is running!",
-        "version": "1.0",
-        "status": "healthy",
-        "endpoints": {
-            "pdf_tools": [
-                "POST /api/merge-pdf - Merge PDFs",
-                "POST /api/split-pdf - Split PDF", 
-                "POST /api/protect-pdf - Password Protect PDF",
-                "POST /api/remove-password - Remove PDF Password",
-                "POST /api/rotate-pdf - Rotate PDF",
-                "POST /api/add-watermark - Add Watermark",
-                "POST /api/add-page-numbers - Add Page Numbers",
-                "POST /api/extract-text - Extract Text from PDF",
-                "POST /api/get-pdf-info - Get PDF Information"
-            ]
-        }
-    })
-
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy", "service": "PDF Tools API"})
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+        if __name__ == '__main__':
+    if not os.path.exists('generated_pdfs'):
+        os.makedirs('generated_pdfs')
+    app.run(debug=True)

@@ -46,7 +46,7 @@ def parse_text(text):
 
 def generate_html_content(subject, qa_pairs):
     """Generate beautiful HTML content"""
-    html_template = f"""
+    html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -60,97 +60,71 @@ def generate_html_content(subject, qa_pairs):
             }}
             .header {{
                 text-align: center;
-                border-bottom: 3px solid #2c3e50;
+                border-bottom: 2px solid #2c3e50;
                 padding-bottom: 20px;
                 margin-bottom: 30px;
             }}
             .title {{
-                font-size: 28px;
+                font-size: 24px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 10px;
-            }}
-            .timestamp {{
-                color: #7f8c8d;
-                font-size: 14px;
             }}
             .qa-section {{
-                margin-bottom: 30px;
+                margin-bottom: 25px;
             }}
             .question {{
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 10px;
-                padding: 15px;
+                margin-bottom: 8px;
+                padding: 10px;
                 background: #f8f9fa;
-                border-left: 5px solid #3498db;
-                border-radius: 5px;
+                border-left: 4px solid #3498db;
             }}
             .answer {{
-                font-size: 16px;
+                font-size: 14px;
                 color: #555;
-                margin-bottom: 20px;
-                padding: 0 15px;
-                line-height: 1.8;
-            }}
-            .footer {{
-                text-align: center;
-                margin-top: 50px;
-                padding-top: 20px;
-                border-top: 1px solid #bdc3c7;
-                color: #7f8c8d;
-                font-size: 12px;
+                padding: 0 10px;
+                line-height: 1.6;
             }}
         </style>
     </head>
     <body>
         <div class="header">
             <div class="title">{subject}</div>
-            <div class="timestamp">Generated on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}</div>
+            <div>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
         </div>
     """
     
     # Add Q&A pairs
     for i, (question, answer) in enumerate(qa_pairs, 1):
-        html_template += f"""
+        html_content += f"""
         <div class="qa-section">
             <div class="question">{i}. {question}</div>
             <div class="answer">{answer}</div>
         </div>
         """
     
-    # Add footer
-    html_template += f"""
-        <div class="footer">
-            Generated with Smart PDF Maker • Total Questions: {len(qa_pairs)}
-        </div>
+    html_content += """
     </body>
     </html>
     """
     
-    return html_template
+    return html_content
 
 @app.route('/')
 def home():
     return jsonify({
         "status": "OK", 
-        "message": "PDF Backend is running with WeasyPrint!",
-        "version": "1.0",
-        "features": ["Unicode Support", "Beautiful Styling", "Auto Parsing"]
+        "message": "PDF Backend is running!",
+        "version": "1.0"
     })
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
 
 @app.route('/generate_pdf', methods=['POST'])
 def generate_pdf():
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-            
         subject = data.get('subject', 'Study Notes')
         filename = data.get('filename', 'notes')
         bulk_text = data.get('bulk_text', '')
@@ -162,13 +136,14 @@ def generate_pdf():
         qa_pairs = parse_text(bulk_text)
         
         if not qa_pairs:
-            return jsonify({"error": "No questions detected. Use format: 1. Question?\\nAnswer..."}), 400
+            return jsonify({"error": "No questions detected"}), 400
         
         # Generate HTML content
         html_content = generate_html_content(subject, qa_pairs)
         
-        # Create PDF from HTML
-        pdf_bytes = HTML(string=html_content).write_pdf()
+        # Create PDF from HTML - SIMPLE VERSION
+        html = HTML(string=html_content)
+        pdf_bytes = html.write_pdf()
         
         # Create file-like object
         pdf_file = io.BytesIO(pdf_bytes)

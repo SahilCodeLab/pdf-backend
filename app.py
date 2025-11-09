@@ -94,9 +94,6 @@ def generate_html_content(subject, qa_pairs):
                 padding: 0 15px;
                 line-height: 1.8;
             }}
-            .page-break {{
-                page-break-before: always;
-            }}
             .footer {{
                 text-align: center;
                 margin-top: 50px;
@@ -116,10 +113,6 @@ def generate_html_content(subject, qa_pairs):
     
     # Add Q&A pairs
     for i, (question, answer) in enumerate(qa_pairs, 1):
-        # Add page break every 5 questions
-        if i > 1 and i % 5 == 1:
-            html_template += '<div class="page-break"></div>'
-        
         html_template += f"""
         <div class="qa-section">
             <div class="question">{i}. {question}</div>
@@ -130,7 +123,7 @@ def generate_html_content(subject, qa_pairs):
     # Add footer
     html_template += f"""
         <div class="footer">
-            Page <span class="pageNumber"></span> • Generated with AI PDF Maker
+            Generated with Smart PDF Maker • Total Questions: {len(qa_pairs)}
         </div>
     </body>
     </html>
@@ -142,15 +135,22 @@ def generate_html_content(subject, qa_pairs):
 def home():
     return jsonify({
         "status": "OK", 
-        "message": "PDF Backend is running!",
-        "version": "WeasyPrint Edition",
-        "features": ["Unicode Support", "Beautiful Formatting", "Page Breaks"]
+        "message": "PDF Backend is running with WeasyPrint!",
+        "version": "1.0",
+        "features": ["Unicode Support", "Beautiful Styling", "Auto Parsing"]
     })
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
 
 @app.route('/generate_pdf', methods=['POST'])
 def generate_pdf():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
         subject = data.get('subject', 'Study Notes')
         filename = data.get('filename', 'notes')
         bulk_text = data.get('bulk_text', '')
@@ -162,7 +162,7 @@ def generate_pdf():
         qa_pairs = parse_text(bulk_text)
         
         if not qa_pairs:
-            return jsonify({"error": "No questions detected. Try: 1. Question?\\nAnswer..."}), 400
+            return jsonify({"error": "No questions detected. Use format: 1. Question?\\nAnswer..."}), 400
         
         # Generate HTML content
         html_content = generate_html_content(subject, qa_pairs)

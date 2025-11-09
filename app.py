@@ -1,109 +1,150 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from fpdf import FPDF
+from weasyprint import HTML
 import os
 import io
 import re
 from datetime import datetime
 
-# Try Gemini import, but make it optional
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-
 app = Flask(__name__)
 CORS(app)
 
-# Gemini setup only if available
-if GEMINI_AVAILABLE:
-    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-    if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
-
-class SmartPDF(FPDF):
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 10)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-def intelligent_parser(text):
-    """Smart parser that works with or without Gemini"""
-    # Try Gemini first if available
-    if GEMINI_AVAILABLE and os.getenv('GEMINI_API_KEY'):
-        try:
-            return parse_with_gemini(text)
-        except:
-            pass
-    
-    # Fallback to advanced regex parser
-    return advanced_regex_parser(text)
-
-def parse_with_gemini(text):
-    """Gemini AI parsing"""
-    try:
-        model = genai.GenerativeModel('gemini-pro')
-        prompt = f"Extract questions and answers from: {text[:3000]}"
-        response = model.generate_content(prompt)
-        # Simple parsing logic here
-        return advanced_regex_parser(response.text)
-    except:
-        return advanced_regex_parser(text)
-
-def advanced_regex_parser(text):
-    """Advanced regex-based parser"""
+def parse_text(text):
+    """Smart text parser"""
     qa_pairs = []
     lines = text.split('\n')
     
-    current_q = ""
-    current_a = []
+    current_question = ""
+    current_answer = []
     
     for line in lines:
         line = line.strip()
         if not line:
             continue
             
-        # Multiple question patterns
+        # Detect question patterns
         is_question = (
             (line and line[0].isdigit() and ('.' in line or ')' in line)) or
             line.lower().startswith('q:') or
             line.lower().startswith('question') or
-            (len(line) < 100 and '?' in line and not line.startswith(' '))
+            line.lower().startswith('q.') or
+            (len(line) < 150 and '?' in line and line.index('?') > 0)
         )
         
         if is_question:
-            if current_q and current_a:
-                qa_pairs.append((clean_text(current_q), clean_text(' '.join(current_a))))
-            current_q = line
-            current_a = []
+            if current_question and current_answer:
+                qa_pairs.append((current_question, ' '.join(current_answer)))
+            current_question = line
+            current_answer = []
         else:
-            current_a.append(line)
+            current_answer.append(line)
     
-    if current_q and current_a:
-        qa_pairs.append((clean_text(current_q), clean_text(' '.join(current_a))))
+    if current_question and current_answer:
+        qa_pairs.append((current_question, ' '.join(current_answer)))
     
     return qa_pairs
 
-def clean_text(text):
-    """Safe text cleaning"""
-    if not text:
-        return ""
-    text = ' '.join(text.split())
-    if len(text) > 1500:
-        text = text[:1500] + "..."
-    return text
+def generate_html_content(subject, qa_pairs):
+    """Generate beautiful HTML content"""
+    html_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                margin: 40px;
+                color: #333;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 3px solid #2c3e50;
+                padding-bottom: 20px;
+                margin-bottom: 30px;
+            }}
+            .title {{
+                font-size: 28px;
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 10px;
+            }}
+            .timestamp {{
+                color: #7f8c8d;
+                font-size: 14px;
+            }}
+            .qa-section {{
+                margin-bottom: 30px;
+            }}
+            .question {{
+                font-size: 18px;
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 10px;
+                padding: 15px;
+                background: #f8f9fa;
+                border-left: 5px solid #3498db;
+                border-radius: 5px;
+            }}
+            .answer {{
+                font-size: 16px;
+                color: #555;
+                margin-bottom: 20px;
+                padding: 0 15px;
+                line-height: 1.8;
+            }}
+            .page-break {{
+                page-break-before: always;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 50px;
+                padding-top: 20px;
+                border-top: 1px solid #bdc3c7;
+                color: #7f8c8d;
+                font-size: 12px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="title">{subject}</div>
+            <div class="timestamp">Generated on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}</div>
+        </div>
+    """
+    
+    # Add Q&A pairs
+    for i, (question, answer) in enumerate(qa_pairs, 1):
+        # Add page break every 5 questions
+        if i > 1 and i % 5 == 1:
+            html_template += '<div class="page-break"></div>'
+        
+        html_template += f"""
+        <div class="qa-section">
+            <div class="question">{i}. {question}</div>
+            <div class="answer">{answer}</div>
+        </div>
+        """
+    
+    # Add footer
+    html_template += f"""
+        <div class="footer">
+            Page <span class="pageNumber"></span> • Generated with AI PDF Maker
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html_template
 
 @app.route('/')
 def home():
-    features = ["Smart Text Parsing", "Auto Format Detection"]
-    if GEMINI_AVAILABLE and os.getenv('GEMINI_API_KEY'):
-        features.append("Gemini AI Powered")
-    
     return jsonify({
         "status": "OK", 
         "message": "PDF Backend is running!",
-        "features": features
+        "version": "WeasyPrint Edition",
+        "features": ["Unicode Support", "Beautiful Formatting", "Page Breaks"]
     })
 
 @app.route('/generate_pdf', methods=['POST'])
@@ -117,43 +158,28 @@ def generate_pdf():
         if not bulk_text.strip():
             return jsonify({"error": "Please provide text content"}), 400
         
-        # Smart parsing
-        qa_pairs = intelligent_parser(bulk_text)
+        # Parse text
+        qa_pairs = parse_text(bulk_text)
         
         if not qa_pairs:
             return jsonify({"error": "No questions detected. Try: 1. Question?\\nAnswer..."}), 400
         
-        # Create PDF
-        pdf = SmartPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=15)
+        # Generate HTML content
+        html_content = generate_html_content(subject, qa_pairs)
         
-        # Header
-        pdf.set_font('Arial', 'B', 16)
-        pdf.cell(0, 10, subject, 0, 1, 'C')
-        pdf.ln(10)
+        # Create PDF from HTML
+        pdf_bytes = HTML(string=html_content).write_pdf()
         
-        # Content
-        for i, (question, answer) in enumerate(qa_pairs, 1):
-            if pdf.get_y() > 250:
-                pdf.add_page()
-            
-            # Question
-            pdf.set_font('Arial', 'B', 12)
-            display_q = question if question.startswith(str(i)) else f"{i}. {question}"
-            pdf.multi_cell(0, 8, display_q)
-            
-            # Answer
-            pdf.set_font('Arial', '', 11)
-            pdf.multi_cell(0, 6, answer)
-            pdf.ln(5)
+        # Create file-like object
+        pdf_file = io.BytesIO(pdf_bytes)
+        pdf_file.seek(0)
         
-        # Save
-        output = io.BytesIO()
-        pdf.output(output)
-        output.seek(0)
-        
-        return send_file(output, as_attachment=True, download_name=f"{filename}.pdf")
+        return send_file(
+            pdf_file,
+            as_attachment=True,
+            download_name=f"{filename}.pdf",
+            mimetype='application/pdf'
+        )
         
     except Exception as e:
         return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500

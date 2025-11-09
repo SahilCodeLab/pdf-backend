@@ -5,7 +5,6 @@ import os
 import io
 import re
 from datetime import datetime
-import uuid
 
 app = Flask(__name__)
 CORS(app)
@@ -45,8 +44,18 @@ def parse_text(text):
     
     return qa_pairs
 
-def generate_html_content(subject, qa_pairs, user_name=""):
-    """Generate beautiful HTML content with page numbers and full formatting"""
+def estimate_content_height(question, answer):
+    """Estimate how much space a Q&A pair will take"""
+    # Rough estimation: 1 line = 20px, average characters per line = 80
+    question_lines = max(1, len(question) // 80)
+    answer_lines = max(1, len(answer) // 80)
+    
+    # Each line takes approx 25px in PDF with line height
+    total_height = (question_lines + answer_lines) * 25 + 40  # 40px for margins
+    return total_height
+
+def generate_html_content(subject, qa_pairs, watermark_text=""):
+    """Generate HTML with smart page breaks based on content length"""
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -55,7 +64,7 @@ def generate_html_content(subject, qa_pairs, user_name=""):
         <style>
             @page {{
                 size: A4;
-                margin: 2cm;
+                margin: 1.5cm;
                 
                 @bottom-center {{
                     content: "Page " counter(page);
@@ -63,80 +72,82 @@ def generate_html_content(subject, qa_pairs, user_name=""):
                     font-size: 10px;
                     color: #666;
                 }}
-                
-                @top-center {{
-                    content: "{subject}";
-                    font-family: Arial, sans-serif;
-                    font-size: 12px;
-                    color: #666;
-                    border-bottom: 1px solid #ddd;
-                    padding-bottom: 10px;
-                }}
             }}
             
             body {{
                 font-family: Arial, sans-serif;
-                line-height: 1.8;
+                line-height: 1.6;
                 margin: 0;
                 padding: 0;
                 color: #333;
                 text-align: justify;
+                position: relative;
+            }}
+            
+            .watermark {{
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(-45deg);
+                font-size: 60px;
+                color: rgba(0, 0, 0, 0.08);
+                font-weight: bold;
+                z-index: -1;
+                pointer-events: none;
+                opacity: 0.7;
             }}
             
             .header {{
                 text-align: center;
-                margin-bottom: 40px;
-                padding-bottom: 20px;
-                border-bottom: 3px solid #2c3e50;
+                margin-bottom: 25px;
+                padding-bottom: 15px;
+                border-bottom: 2px solid #2c3e50;
             }}
             
             .title {{
-                font-size: 28px;
+                font-size: 22px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 10px;
-            }}
-            
-            .subtitle {{
-                font-size: 16px;
-                color: #7f8c8d;
                 margin-bottom: 5px;
             }}
             
-            .user-info {{
-                font-size: 14px;
-                color: #3498db;
-                font-style: italic;
+            .subtitle {{
+                font-size: 12px;
+                color: #7f8c8d;
+                margin-bottom: 3px;
             }}
             
             .qa-container {{
                 margin: 0 auto;
-                max-width: 100%;
             }}
             
             .qa-section {{
-                margin-bottom: 30px;
-                page-break-inside: avoid;
+                margin-bottom: 20px;
+                padding-bottom: 15px;
             }}
             
             .question {{
-                font-size: 18px;
+                font-size: 15px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 12px;
-                padding: 15px;
-                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                border-left: 5px solid #3498db;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                margin-bottom: 8px;
+                padding: 10px;
+                background: #f8f9fa;
+                border-left: 4px solid #3498db;
+                border-radius: 4px;
             }}
             
             .answer {{
-                font-size: 16px;
+                font-size: 13px;
                 color: #555;
-                padding: 0 15px;
-                line-height: 1.8;
+                padding: 0 10px;
+                line-height: 1.5;
                 text-align: justify;
+            }}
+            
+            /* Smart page breaks */
+            .qa-section {{
+                page-break-inside: avoid;
             }}
             
             .page-break {{
@@ -145,51 +156,63 @@ def generate_html_content(subject, qa_pairs, user_name=""):
             
             .footer {{
                 text-align: center;
-                margin-top: 50px;
-                padding-top: 20px;
+                margin-top: 25px;
+                padding-top: 12px;
                 border-top: 1px solid #bdc3c7;
                 color: #7f8c8d;
-                font-size: 12px;
-            }}
-            
-            /* Ensure text uses full page width */
-            .content-wrapper {{
-                width: 100%;
-                max-width: 100%;
+                font-size: 10px;
             }}
         </style>
     </head>
     <body>
+        <!-- Watermark on every page -->
+        <div class="watermark">{watermark_text}</div>
+        
         <div class="header">
             <div class="title">{subject}</div>
-            <div class="subtitle">Generated on {datetime.now().strftime('%Y-%m-%d at %I:%M %p')}</div>
-            {f'<div class="user-info">Created by: {user_name}</div>' if user_name else ''}
-            <div class="subtitle">Total Questions: {len(qa_pairs)}</div>
+            <div class="subtitle">Generated on {datetime.now().strftime('%d %b %Y at %I:%M %p')}</div>
         </div>
         
-        <div class="content-wrapper">
-            <div class="qa-container">
+        <div class="qa-container">
     """
     
-    # Add Q&A pairs
+    # Smart page breaking based on content length
+    current_page_height = 400  # Header + initial margin height approx
+    page_count = 1
+    questions_on_current_page = 0
+    
     for i, (question, answer) in enumerate(qa_pairs, 1):
-        # Add page break every 8 questions for better readability
-        if i > 1 and i % 8 == 1:
+        # Estimate content height for this Q&A
+        content_height = estimate_content_height(question, answer)
+        
+        # If adding this content would exceed page, add page break
+        if current_page_height + content_height > 1800:  # A4 page height approx
             html_content += '<div class="page-break"></div>'
+            html_content += f"""
+            <div class="header">
+                <div class="title">{subject} (Continued)</div>
+                <div class="subtitle">Page {page_count + 1}</div>
+            </div>
+            """
+            current_page_height = 400  # Reset for new page
+            page_count += 1
+            questions_on_current_page = 0
         
         html_content += f"""
-                <div class="qa-section">
-                    <div class="question">{i}. {question}</div>
-                    <div class="answer">{answer}</div>
-                </div>
+            <div class="qa-section">
+                <div class="question">{i}. {question}</div>
+                <div class="answer">{answer}</div>
+            </div>
         """
+        
+        current_page_height += content_height
+        questions_on_current_page += 1
     
     html_content += """
-            </div>
         </div>
         
         <div class="footer">
-            Document generated automatically • All rights reserved
+            Professional Document • Generated by sahilcodelab
         </div>
     </body>
     </html>
@@ -202,7 +225,7 @@ def home():
     return jsonify({
         "status": "OK", 
         "message": "PDF Backend is running!",
-        "features": ["Page Numbers", "Full Justify", "Dynamic Filenames", "User Names"]
+        "features": ["Smart Page Breaks", "Content-based Layout", "Watermark", "Professional Formatting"]
     })
 
 @app.route('/generate_pdf', methods=['POST'])
@@ -212,7 +235,6 @@ def generate_pdf():
         subject = data.get('subject', 'Study Notes')
         filename = data.get('filename', 'notes')
         bulk_text = data.get('bulk_text', '')
-        user_name = data.get('user_name', '')  # New field for user name
         
         if not bulk_text.strip():
             return jsonify({"error": "Please provide text content"}), 400
@@ -223,14 +245,17 @@ def generate_pdf():
         if not qa_pairs:
             return jsonify({"error": "No questions detected. Use format: 1. Question?\\nAnswer..."}), 400
         
-        # Generate HTML content with user name
-        html_content = generate_html_content(subject, qa_pairs, user_name)
+        # Set watermark text
+        watermark_text = "sahilcodelab"
+        
+        # Generate HTML content with smart page breaks
+        html_content = generate_html_content(subject, qa_pairs, watermark_text)
         
         # Create PDF from HTML
         html = HTML(string=html_content)
         pdf_bytes = html.write_pdf()
         
-        # Create dynamic filename with timestamp to avoid same name downloads
+        # Create dynamic filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_filename = f"{filename}_{timestamp}"
         

@@ -3,9 +3,12 @@ from flask_cors import CORS
 from weasyprint import HTML
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError # Added to catch structured quota errors
 import os
 import io
 import json
+import time
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
@@ -27,7 +30,7 @@ if not GEMINI_API_KEY:
     raise ValueError("❌ GEMINI_API_KEY not found")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-logger.info("✅ Gemini client ready")
+logger.info("✅ Gemini client ready with resilience layer")
 
 # =========================
 # PREMIUM ACADEMIC PUBLISHING THEME
@@ -44,16 +47,20 @@ THEME = {
 }
 
 # =========================
-# Health Check
+# Helper to safely parse inline markdown tags
 # =========================
-@app.route("/")
-def home():
-    return jsonify({"status": "OK", "message": "DocCraft AI Engine Active"})
+def parse_inline_styles(text):
+    """Converts basic markdown like bold/italic into HTML tags for fallback"""
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'_(.*?)_', r'<em>\1</em>', text)
+    text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
+    return text
 
 # =========================
-# Advanced Gemini Parser (Zero Data Loss)
+# Gemini Parser with Auto-Retry (Resilient to 429)
 # =========================
-def analyze_document(text):
+def analyze_document(text, retries=2, delay=2):
     prompt = f"""You are an expert document typesetter. Convert the following raw text into a highly accurate structured JSON format. 
 CRITICAL RULE: You must preserve EVERY SINGLE WORD, sentence, and data point. Do NOT summarize, shorten, or paraphrase anything.
 
@@ -66,9 +73,9 @@ JSON Schema:
     {{
       "type": "heading" | "subheading" | "paragraph" | "question" | "answer" | "blockquote" | "code_block" | "table" | "bullet_list" | "numbered_list",
       "text": "The full exact text (applicable for standard types)",
-      "items": ["Exact text of item 1", "Exact text of item 2"], // Only for bullet_list or numbered_list
-      "headers": ["Col 1", "Col 2"], // Only for table
-      "rows": [["Row 1 Col 1", "Row 1 Col 2"]] // Only for table
+      "items": ["Exact text of item 1", "Exact text of item 2"],
+      "headers": ["Col 1", "Col 2"],
+      "rows": [["Row 1 Col 1", "Row 1 Col 2"]]
     }}
   ]
 }}
@@ -76,29 +83,34 @@ JSON Schema:
 Formatting Guidelines:
 1. Retain inner emphasis: If specific words inside a paragraph are bold or crucial, wrap them in standard HTML tags like <strong>word</strong> or <em>word</em> inside the JSON text strings.
 2. If text contains a Q&A format, cleanly separate them into 'question' and 'answer' types.
-3. If it contains data comparisons, construct a proper 'table'.
 
 Text to convert:
 {text}"""
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.0, # Lowest temperature for accurate extraction
-                max_output_tokens=8192,
-                response_mime_type="application/json" # Enforces pure JSON output safely
+    for attempt in range(retries + 1):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    max_output_tokens=8192,
+                    response_mime_type="application/json"
+                )
             )
-        )
-        
-        return json.loads(response.text.strip())
-    except Exception as e:
-        logger.error(f"Gemini processing error, trying manual fallback: {e}")
-        raise
+            return json.loads(response.text.strip())
+        except APIError as e:
+            if e.code == 429 and attempt < retries:
+                logger.warning(f"⚠️ Quota hit (429). Retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})")
+                time.sleep(delay)
+                delay *= 2 # Exponential backoff
+                continue
+            raise e
+        except Exception as e:
+            raise e
 
 # =========================
-# Robust Manual Fallback Parser
+# Upgraded Smart Manual Fallback Parser
 # =========================
 def manual_parse(text):
     lines = text.strip().split('\n')
@@ -113,8 +125,11 @@ def manual_parse(text):
         if not line:
             continue
         
+        # Format inline markings on the fly
+        line_clean = parse_inline_styles(line)
+        
         if not title and len(line) < 100:
-            title = line
+            title = line.replace('**', '').replace('#', '').strip()
             continue
             
         if current_list and not line.startswith(('-', '*', '•', '→', '1.', '2.', '3.')):
@@ -122,34 +137,36 @@ def manual_parse(text):
             current_list = None
             list_type = None
 
-        if len(line) < 90 and (line.isupper() or line.startswith(('Chapter', 'Part', 'Section', 'Unit', '6.', '7.', '8.', '9.'))):
-            sections.append({"type": "heading", "text": line})
+        if len(line) < 90 and (line.isupper() or line.startswith(('#', 'Chapter', 'Part', 'Section', 'Unit')) or re.match(r'^\d+\.', line)):
+            # Clean heading marks
+            h_text = line.replace('#', '').strip()
+            sections.append({"type": "heading", "text": parse_inline_styles(h_text)})
         elif line.endswith('?') or line.startswith(('What ', 'How ', 'Why ', 'When ', 'Where ', 'Who ', 'Explain ')):
-            sections.append({"type": "question", "text": line})
+            sections.append({"type": "question", "text": line_clean})
         elif line.startswith(('- ', '* ', '• ', '→ ')):
             if not current_list or list_type != "bullet_list":
                 if current_list: sections.append({"type": list_type, "items": current_list})
                 current_list = []
                 list_type = "bullet_list"
-            current_list.append(line[2:].strip())
+            current_list.append(parse_inline_styles(line[2:].strip()))
         elif line[0].isdigit() and '. ' in line[:5]:
             clean_item = line.split('. ', 1)[1].strip()
             if not current_list or list_type != "numbered_list":
                 if current_list: sections.append({"type": list_type, "items": current_list})
                 current_list = []
                 list_type = "numbered_list"
-            current_list.append(clean_item)
+            current_list.append(parse_inline_styles(clean_item))
         elif line.startswith(('Note:', 'Important:', '>')):
-            sections.append({"type": "blockquote", "text": line.replace('>', '').strip()})
+            sections.append({"type": "blockquote", "text": line_clean.replace('>', '').strip()})
         else:
-            sections.append({"type": "paragraph", "text": line})
+            sections.append({"type": "paragraph", "text": line_clean})
             
     if current_list:
         sections.append({"type": list_type, "items": current_list})
         
     return {
         "title": title or "Document Output",
-        "sections": sections or [{"type": "paragraph", "text": text}]
+        "sections": sections or [{"type": "paragraph", "text": parse_inline_styles(text)}]
     }
 
 # =========================
@@ -312,7 +329,7 @@ def build_html(doc):
         elif stype == "answer":
             html += f'<p class="answer">{text}</p>'
         elif stype == "blockquote":
-            html += f'blockquote><p>{text}</p></blockquote>'
+            html += f'<blockquote><p>{text}</p></blockquote>'
         elif stype == "code_block":
             html += f'<pre><code>{text}</code></pre>'
         elif stype == "bullet_list":
@@ -358,10 +375,11 @@ def generate_pdf():
         if not bulk_text.strip():
             return jsonify({"error": "bulk_text content is missing"}), 400
         
+        # Smart Hybrid Parsing Layer
         try:
             doc = analyze_document(bulk_text)
         except Exception as e:
-            logger.warning(f"Advanced parse failed, initializing manual fallback: {e}")
+            logger.warning(f"💥 Gemini pipeline hit an error ({str(e)}), switching seamlessly to enhanced Manual Parser.")
             doc = manual_parse(bulk_text)
         
         html_content = build_html(doc)
@@ -378,7 +396,7 @@ def generate_pdf():
         )
         
     except Exception as e:
-        logger.error(f"Critical Error Encountered: {traceback.format_exc()}")
+        logger.error(f"Critical System Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":

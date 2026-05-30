@@ -7,9 +7,20 @@ import io
 import json
 from datetime import datetime
 from dotenv import load_dotenv
+import logging
+import traceback
 
 # Load environment variables
 load_dotenv()
+
+# ------------------------------------------------------------
+# LOGGER SETUP
+# ------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
@@ -19,10 +30,13 @@ CORS(app)
 # =========================
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
+    logger.error("❌ GEMINI_API_KEY not found in environment variables")
     raise ValueError("❌ GEMINI_API_KEY not found in environment variables")
 
+logger.info("✅ GEMINI_API_KEY loaded successfully")
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')  # Updated model name
+logger.info("✅ Gemini model initialized")
 
 # =========================
 # Premium Themes
@@ -47,24 +61,24 @@ THEMES = {
         "font_body": "Segoe UI, Arial, sans-serif",
         "watermark_opacity": "0.03"
     },
-    "dark_executive": {
-        "name": "Dark Executive",
-        "primary": "#f59e0b",
-        "secondary": "#d97706",
-        "accent": "#3b82f6",
-        "bg": "#0f172a",
-        "text": "#e2e8f0",
-        "heading": "#fbbf24",
-        "subheading": "#cbd5e1",
-        "border": "#334155",
-        "cover_gradient_start": "#f59e0b",
-        "cover_gradient_end": "#ef4444",
-        "question_bg": "#1e293b",
-        "question_border": "#f59e0b",
-        "footer_text": "#64748b",
-        "font_heading": "Trebuchet MS, sans-serif",
-        "font_body": "Verdana, sans-serif",
-        "watermark_opacity": "0.05"
+    "corporate_premium": {
+        "name": "Corporate Premium",
+        "primary": "#1e40af",
+        "secondary": "#3b82f6",
+        "accent": "#dc2626",
+        "bg": "#ffffff",
+        "text": "#111827",
+        "heading": "#1e3a8a",
+        "subheading": "#374151",
+        "border": "#e5e7eb",
+        "cover_gradient_start": "#1e40af",
+        "cover_gradient_end": "#312e81",
+        "question_bg": "#f8fafc",
+        "question_border": "#1e40af",
+        "footer_text": "#6b7280",
+        "font_heading": "Cambria, serif",
+        "font_body": "Calibri, sans-serif",
+        "watermark_opacity": "0.04"
     },
     "elegant_minimal": {
         "name": "Elegant Minimal",
@@ -85,24 +99,24 @@ THEMES = {
         "font_body": "Lato, sans-serif",
         "watermark_opacity": "0.02"
     },
-    "corporate_premium": {
-        "name": "Corporate Premium",
-        "primary": "#1e40af",
-        "secondary": "#3b82f6",
-        "accent": "#dc2626",
-        "bg": "#ffffff",
-        "text": "#111827",
-        "heading": "#1e3a8a",
-        "subheading": "#374151",
-        "border": "#e5e7eb",
-        "cover_gradient_start": "#1e40af",
-        "cover_gradient_end": "#312e81",
-        "question_bg": "#f8fafc",
-        "question_border": "#1e40af",
-        "footer_text": "#6b7280",
-        "font_heading": "Cambria, serif",
-        "font_body": "Calibri, sans-serif",
-        "watermark_opacity": "0.04"
+    "dark_executive": {
+        "name": "Dark Executive",
+        "primary": "#f59e0b",
+        "secondary": "#d97706",
+        "accent": "#3b82f6",
+        "bg": "#0f172a",
+        "text": "#e2e8f0",
+        "heading": "#fbbf24",
+        "subheading": "#cbd5e1",
+        "border": "#334155",
+        "cover_gradient_start": "#f59e0b",
+        "cover_gradient_end": "#ef4444",
+        "question_bg": "#1e293b",
+        "question_border": "#f59e0b",
+        "footer_text": "#64748b",
+        "font_heading": "Trebuchet MS, sans-serif",
+        "font_body": "Verdana, sans-serif",
+        "watermark_opacity": "0.05"
     },
     "creative_vibrant": {
         "name": "Creative Vibrant",
@@ -130,6 +144,7 @@ THEMES = {
 # =========================
 @app.route("/")
 def home():
+    logger.info("Health check requested")
     return jsonify({
         "status": "OK",
         "message": "DocCraft AI Premium Backend Running",
@@ -142,6 +157,7 @@ def home():
 # =========================
 @app.route("/themes", methods=["GET"])
 def get_themes():
+    logger.info("Themes list requested")
     themes_info = {}
     for theme_id, theme in THEMES.items():
         themes_info[theme_id] = {
@@ -155,6 +171,9 @@ def get_themes():
 # Gemini Parser
 # =========================
 def analyze_document(text):
+    logger.info("📝 Starting document analysis with Gemini...")
+    logger.info(f"📝 Text length: {len(text)} characters")
+    
     prompt = f"""
 You are a professional document structure parser for premium document generation.
 
@@ -188,15 +207,33 @@ Text:
 {text}
 """
     
-    response = model.generate_content(prompt)
-    raw = response.text.strip()
-    
-    if raw.startswith("```json"):
-        raw = raw.replace("```json", "").replace("```", "")
-    elif raw.startswith("```"):
-        raw = raw.replace("```", "")
-    
-    return json.loads(raw)
+    try:
+        logger.info("🤖 Calling Gemini API...")
+        response = model.generate_content(prompt)
+        logger.info("✅ Gemini API response received")
+        
+        raw = response.text.strip()
+        logger.info(f"📄 Raw response (first 200 chars): {raw[:200]}...")
+        
+        # Clean JSON response
+        if raw.startswith("```json"):
+            logger.info("🔄 Cleaning JSON markdown wrapper")
+            raw = raw.replace("```json", "").replace("```", "")
+        elif raw.startswith("```"):
+            raw = raw.replace("```", "")
+        
+        parsed = json.loads(raw)
+        logger.info(f"✅ Document parsed successfully. Type: {parsed.get('document_type')}, Sections: {len(parsed.get('sections', []))}")
+        return parsed
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON Parse Error: {str(e)}")
+        logger.error(f"❌ Raw response: {raw}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Gemini API Error: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
 
 # =========================
 # Generate Cover Page
@@ -220,18 +257,6 @@ def generate_cover_page(title, doc_type, theme, author=""):
             height: 8px;
             background: linear-gradient(90deg, {theme['cover_gradient_start']}, {theme['cover_gradient_end']});
         "></div>
-        
-        <div style="
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-20deg);
-            font-size: 200px;
-            opacity: 0.03;
-            color: {theme['primary']};
-            font-weight: bold;
-            pointer-events: none;
-        ">DOC</div>
         
         <div class="cover-content" style="
             text-align: center;
@@ -281,6 +306,7 @@ def generate_cover_page(title, doc_type, theme, author=""):
 # Build Premium HTML
 # =========================
 def build_premium_html(doc, theme_id="modern_professional"):
+    logger.info(f"🎨 Building HTML with theme: {theme_id}")
     theme = THEMES.get(theme_id, THEMES["modern_professional"])
     title = doc.get("title", "Document")
     document_type = doc.get("document_type", "general_document")
@@ -290,6 +316,8 @@ def build_premium_html(doc, theme_id="modern_professional"):
     keywords = metadata.get("keywords", [])
     reading_time = metadata.get("reading_time_minutes", 0)
     complexity = metadata.get("complexity", "basic")
+    
+    logger.info(f"📊 Doc info - Type: {document_type}, Sections: {len(sections)}, Theme: {theme['name']}")
     
     cover = generate_cover_page(title, document_type, theme, author)
     
@@ -325,11 +353,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 line-height: 1.8;
                 background: {theme['bg']};
                 font-size: 12px;
-            }}
-            
-            .content {{
-                position: relative;
-                z-index: 2;
             }}
             
             h1 {{
@@ -371,26 +394,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 margin: 20px 0;
                 font-style: italic;
                 border-radius: 0 8px 8px 0;
-                position: relative;
-            }}
-            
-            .quote-box::before {{
-                content: '\\201C';
-                position: absolute;
-                top: -10px;
-                left: 10px;
-                font-size: 60px;
-                color: {theme['primary']};
-                opacity: 0.3;
-                font-family: Georgia, serif;
-            }}
-            
-            .callout-box {{
-                background: linear-gradient(135deg, {theme['primary']}10, {theme['accent']}10);
-                border: 2px solid {theme['primary']};
-                border-radius: 12px;
-                padding: 20px;
-                margin: 20px 0;
             }}
             
             .question-box {{
@@ -466,53 +469,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 letter-spacing: 15px;
             }}
             
-            .keyword-tag {{
-                display: inline-block;
-                background: {theme['primary']}15;
-                color: {theme['primary']};
-                padding: 3px 10px;
-                border-radius: 15px;
-                font-size: 10px;
-                margin: 3px;
-                border: 1px solid {theme['primary']}30;
-            }}
-            
-            .complexity-indicator {{
-                display: inline-block;
-                padding: 5px 15px;
-                border-radius: 20px;
-                font-size: 10px;
-                font-weight: bold;
-                text-transform: uppercase;
-                letter-spacing: 2px;
-                background: {theme['primary']};
-                color: white;
-            }}
-            
-            .toc {{
-                background: {theme['bg']};
-                border: 2px solid {theme['border']};
-                border-radius: 12px;
-                padding: 25px;
-                margin: 30px 0;
-            }}
-            
-            .toc h2 {{
-                font-family: {theme['font_heading']};
-                color: {theme['primary']};
-                border-bottom: 2px solid {theme['border']};
-                padding-bottom: 10px;
-                margin-bottom: 20px;
-            }}
-            
-            .toc-item {{
-                display: flex;
-                justify-content: space-between;
-                padding: 8px 0;
-                border-bottom: 1px dotted {theme['border']};
-                font-size: 11px;
-            }}
-            
             .info-bar {{
                 display: flex;
                 justify-content: space-between;
@@ -523,29 +479,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 padding: 15px;
                 margin: 20px 0;
                 font-size: 11px;
-            }}
-            
-            .info-item {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                color: {theme['subheading']};
-            }}
-            
-            .watermark {{
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%) rotate(-25deg);
-                font-size: 120px;
-                font-weight: bold;
-                color: {theme['primary']};
-                opacity: {theme['watermark_opacity']};
-                pointer-events: none;
-                white-space: nowrap;
-                z-index: 1;
-                letter-spacing: 20px;
-                font-family: {theme['font_heading']};
             }}
             
             .footer-note {{
@@ -559,55 +492,14 @@ def build_premium_html(doc, theme_id="modern_professional"):
         </style>
     </head>
     <body>
-        <div class="watermark">DocCraft AI</div>
         {cover}
         
-        <div class="content">
-            <div class="info-bar">
-                <div class="info-item">
-                    <span>📄</span>
-                    <span>{document_type.replace('_', ' ').title()}</span>
-                </div>
-                <div class="info-item">
-                    <span>⏱️</span>
-                    <span>{reading_time} min read</span>
-                </div>
-                <div class="info-item">
-                    <span>📅</span>
-                    <span>{datetime.now().strftime('%b %d, %Y')}</span>
-                </div>
-                <div>
-                    <span class="complexity-indicator">{complexity.upper()}</span>
-                </div>
-            </div>
+        <div class="info-bar">
+            <span>📄 {document_type.replace('_', ' ').title()}</span>
+            <span>⏱️ {reading_time} min read</span>
+            <span>📅 {datetime.now().strftime('%b %d, %Y')}</span>
+        </div>
     """
-    
-    if keywords:
-        html += '<div style="margin: 20px 0;">'
-        for kw in keywords:
-            html += f'<span class="keyword-tag">#{kw}</span>'
-        html += '</div>'
-    
-    # Generate TOC
-    toc_items = []
-    for section in sections:
-        if section['type'] in ['heading', 'subheading']:
-            toc_items.append({
-                'text': section['text'],
-                'level': section['type']
-            })
-    
-    if toc_items:
-        html += '<div class="toc"><h2>📑 Table of Contents</h2>'
-        for item in toc_items:
-            padding = '20px' if item['level'] == 'subheading' else '0px'
-            html += f'''
-            <div class="toc-item" style="padding-left: {padding};">
-                <span>{item['text'][:80]}{'...' if len(item['text']) > 80 else ''}</span>
-                <span style="color: {theme['footer_text']};">→</span>
-            </div>
-            '''
-        html += '</div>'
     
     # Process Sections
     for section in sections:
@@ -617,37 +509,26 @@ def build_premium_html(doc, theme_id="modern_professional"):
         
         if section_type == "heading":
             html += f'<h1>{text}</h1>'
-        
         elif section_type == "subheading":
             html += f'<h2>{text}</h2>'
-        
         elif section_type == "question":
             html += f'<div class="question-box">❓ {text}</div>'
-        
         elif section_type == "answer":
             html += f'<div class="answer-box">{text}</div>'
-        
         elif section_type == "quote":
             html += f'<div class="quote-box">{text}</div>'
-        
-        elif section_type == "callout":
-            html += f'<div class="callout-box">📌 {text}</div>'
-        
         elif section_type == "divider":
             html += f'<div class="divider">✦ ✦ ✦</div>'
-        
         elif section_type == "bullet_list":
             html += '<ul>'
             for item in items:
                 html += f'<li>{item}</li>'
             html += '</ul>'
-        
         elif section_type == "numbered_list":
             html += '<ol>'
             for item in items:
                 html += f'<li>{item}</li>'
             html += '</ol>'
-        
         else:
             html += f'<p>{text}</p>'
     
@@ -657,11 +538,11 @@ def build_premium_html(doc, theme_id="modern_professional"):
             <p>© {datetime.now().year} DocCraft AI • Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
             <p>Theme: {theme['name']} • Premium Document Generation</p>
         </div>
-        </div>
     </body>
     </html>
     """
     
+    logger.info("✅ HTML built successfully")
     return html
 
 # =========================
@@ -671,90 +552,146 @@ def build_premium_html(doc, theme_id="modern_professional"):
 def generate_pdf():
     try:
         data = request.get_json()
+        logger.info("📥 Received /generate_pdf request")
+        logger.info(f"📥 Payload keys: {list(data.keys()) if data else 'None'}")
         
+        # Extract fields
         subject = data.get("subject", "Document")
         filename = data.get("filename", "document")
         bulk_text = data.get("bulk_text", "")
         theme_id = data.get("theme", "modern_professional")
         author = data.get("author", "")
         
+        logger.info(f"📝 Subject: '{subject}', Filename: '{filename}', Theme: '{theme_id}'")
+        logger.info(f"📝 Author: '{author}', Text length: {len(bulk_text)}")
+        
+        # Validate theme
         if theme_id not in THEMES:
+            logger.warning(f"⚠️ Invalid theme '{theme_id}', using default")
             theme_id = "modern_professional"
         
+        # Validate bulk_text
         if not bulk_text.strip():
+            logger.warning("❌ Empty bulk_text received")
             return jsonify({
                 "error": "bulk_text is empty",
                 "code": "EMPTY_CONTENT"
             }), 400
         
-        # Analyze document with Gemini
+        # Step 1: Analyze document
+        logger.info("🔍 Step 1/3: Analyzing document...")
         doc = analyze_document(bulk_text)
+        logger.info(f"✅ Analysis complete. Document type: {doc.get('document_type')}")
         
+        # Set defaults
         if not doc.get("title"):
             doc["title"] = subject
+            logger.info(f"📌 Using subject as title: '{subject}'")
         
         if author:
             doc["author"] = author
         
-        # Build premium HTML
+        # Step 2: Build HTML
+        logger.info("🎨 Step 2/3: Building HTML...")
         html_content = build_premium_html(doc, theme_id)
+        logger.info(f"✅ HTML built ({len(html_content)} characters)")
         
-        # Generate PDF
+        # Step 3: Generate PDF
+        logger.info("📄 Step 3/3: Generating PDF...")
         pdf_bytes = HTML(string=html_content).write_pdf()
+        logger.info(f"✅ PDF generated ({len(pdf_bytes)} bytes)")
+        
+        # Create file object
         pdf_file = io.BytesIO(pdf_bytes)
         pdf_file.seek(0)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        download_name = f"{filename}_{timestamp}_{theme_id}.pdf"
+        
+        logger.info(f"✅ Sending PDF: {download_name}")
         
         return send_file(
             pdf_file,
             mimetype="application/pdf",
             as_attachment=True,
-            download_name=f"{filename}_{timestamp}_{theme_id}.pdf"
+            download_name=download_name
         )
     
     except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON Parse Error: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
-            "error": "Invalid JSON in Gemini response",
+            "error": "Failed to parse document structure",
             "details": str(e),
             "code": "JSON_PARSE_ERROR"
         }), 500
     
     except Exception as e:
+        logger.error(f"❌ Unexpected Error: {str(e)}")
+        logger.error(f"❌ Error Type: {type(e).__name__}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "error": str(e),
+            "type": type(e).__name__,
             "code": "GENERAL_ERROR"
         }), 500
 
 # =========================
-# Preview Endpoint
+# Test Endpoint (No Gemini)
 # =========================
-@app.route("/preview", methods=["POST"])
-def preview():
+@app.route("/test_pdf", methods=["GET"])
+def test_pdf():
     try:
-        data = request.get_json()
-        bulk_text = data.get("bulk_text", "")
-        theme_id = data.get("theme", "modern_professional")
+        logger.info("🧪 Test PDF endpoint called")
         
-        if not bulk_text.strip():
-            return jsonify({"error": "Empty content"}), 400
+        doc = {
+            "document_type": "test_document",
+            "title": "Test Document",
+            "author": "DocCraft AI",
+            "sections": [
+                {"type": "heading", "text": "Welcome to DocCraft AI"},
+                {"type": "paragraph", "text": "This is a test document to verify PDF generation is working correctly."},
+                {"type": "subheading", "text": "Features"},
+                {"type": "bullet_list", "items": ["Premium Themes", "AI Analysis", "Professional Formatting", "Instant Download"]},
+                {"type": "subheading", "text": "How It Works"},
+                {"type": "numbered_list", "items": ["Enter your text", "Choose a theme", "Click generate", "Download PDF"]},
+                {"type": "divider", "text": ""},
+                {"type": "quote", "text": "The art of communication is the language of leadership."},
+            ],
+            "metadata": {
+                "keywords": ["test", "pdf", "docraft"],
+                "reading_time_minutes": 1,
+                "complexity": "basic"
+            }
+        }
         
-        doc = analyze_document(bulk_text)
+        html_content = build_premium_html(doc, "modern_professional")
+        pdf_bytes = HTML(string=html_content).write_pdf()
         
-        return jsonify({
-            "document_type": doc.get("document_type"),
-            "title": doc.get("title"),
-            "sections_count": len(doc.get("sections", [])),
-            "metadata": doc.get("metadata", {}),
-            "theme": THEMES.get(theme_id, THEMES["modern_professional"])["name"]
-        })
-    
+        pdf_file = io.BytesIO(pdf_bytes)
+        pdf_file.seek(0)
+        
+        logger.info(f"✅ Test PDF generated: {len(pdf_bytes)} bytes")
+        
+        return send_file(
+            pdf_file,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name="test_document.pdf"
+        )
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"❌ Test PDF Error: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "error": str(e),
+            "type": type(e).__name__
+        }), 500
 
 # =========================
 # Run Server
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    logger.info(f"🚀 Starting DocCraft AI server on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)

@@ -30,22 +30,17 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 logger.info("✅ Gemini client ready")
 
 # =========================
-# PROFESSIONAL THEME (SINGLE CLEAN THEME)
+# PREMIUM ACADEMIC PUBLISHING THEME
 # =========================
 THEME = {
-    "primary": "#1a1a1a",
-    "secondary": "#333333",
-    "accent": "#0066cc",
-    "bg": "#ffffff",
-    "text": "#1a1a1a",
+    "text": "#111111",
     "heading": "#000000",
-    "subheading": "#333333",
-    "border": "#e0e0e0",
-    "question_bg": "#f8f9fa",
-    "question_border": "#0066cc",
-    "footer_text": "#888888",
-    "font_heading": "Georgia, 'Times New Roman', serif",
-    "font_body": "'Segoe UI', Arial, sans-serif",
+    "subheading": "#222222",
+    "border": "#cccccc",
+    "footer_text": "#555555",
+    "code_bg": "#f8f9fa",
+    "quote_bg": "#fcfcfc",
+    "font_family": "Georgia, 'Times New Roman', serif",
 }
 
 # =========================
@@ -53,110 +48,115 @@ THEME = {
 # =========================
 @app.route("/")
 def home():
-    return jsonify({"status": "OK", "message": "DocCraft AI Running"})
+    return jsonify({"status": "OK", "message": "DocCraft AI Engine Active"})
 
 # =========================
-# Gemini Parser (Simple - Only Detect Structure)
+# Advanced Gemini Parser (Zero Data Loss)
 # =========================
 def analyze_document(text):
-    prompt = f"""Analyze this text and return ONLY valid JSON. No markdown, no explanation.
+    prompt = f"""You are an expert document typesetter. Convert the following raw text into a highly accurate structured JSON format. 
+CRITICAL RULE: You must preserve EVERY SINGLE WORD, sentence, and data point. Do NOT summarize, shorten, or paraphrase anything.
 
-JSON format:
+Analyze the structure and return ONLY a valid JSON object. No markdown wrapping.
+
+JSON Schema:
 {{
-  "title": "main title from text",
+  "title": "Exact main title of the text",
   "sections": [
-    {{"type": "heading", "text": "..."}},
-    {{"type": "subheading", "text": "..."}},
-    {{"type": "paragraph", "text": "..."}},
-    {{"type": "question", "text": "..."}},
-    {{"type": "answer", "text": "..."}},
-    {{"type": "bullet_list", "items": ["item1", "item2"]}},
-    {{"type": "numbered_list", "items": ["item1", "item2"]}}
+    {{
+      "type": "heading" | "subheading" | "paragraph" | "question" | "answer" | "blockquote" | "code_block" | "table" | "bullet_list" | "numbered_list",
+      "text": "The full exact text (applicable for standard types)",
+      "items": ["Exact text of item 1", "Exact text of item 2"], // Only for bullet_list or numbered_list
+      "headers": ["Col 1", "Col 2"], // Only for table
+      "rows": [["Row 1 Col 1", "Row 1 Col 2"]] // Only for table
+    }}
   ]
 }}
 
-Rules:
-- Detect actual headings (short lines, important topics)
-- Detect questions (ending with ? or starting with What/How/Why/When/Where)
-- Detect bullet points (starting with -, *, •)
-- Detect numbered lists (starting with 1., 2., etc)
-- Everything else = paragraph
-- NO extra text, NO summaries, ONLY the JSON
+Formatting Guidelines:
+1. Retain inner emphasis: If specific words inside a paragraph are bold or crucial, wrap them in standard HTML tags like <strong>word</strong> or <em>word</em> inside the JSON text strings.
+2. If text contains a Q&A format, cleanly separate them into 'question' and 'answer' types.
+3. If it contains data comparisons, construct a proper 'table'.
 
-Text:
+Text to convert:
 {text}"""
 
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=4096)
+            config=types.GenerateContentConfig(
+                temperature=0.0, # Lowest temperature for accurate extraction
+                max_output_tokens=8192,
+                response_mime_type="application/json" # Enforces pure JSON output safely
+            )
         )
         
-        raw = response.text.strip()
-        # Clean JSON
-        for prefix in ["```json", "```"]:
-            if raw.startswith(prefix):
-                raw = raw[len(prefix):]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
-        
-        return json.loads(raw)
+        return json.loads(response.text.strip())
     except Exception as e:
-        logger.error(f"Gemini error: {e}")
+        logger.error(f"Gemini processing error, trying manual fallback: {e}")
         raise
 
 # =========================
-# Fallback Parser (No Gemini)
+# Robust Manual Fallback Parser
 # =========================
 def manual_parse(text):
     lines = text.strip().split('\n')
     sections = []
     title = ""
     
+    current_list = None
+    list_type = None
+    
     for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
         
-        # First non-empty line = title
         if not title and len(line) < 100:
             title = line
             continue
-        
-        # Heading detection
-        if len(line) < 80 and (line.isupper() or 
-            line.startswith(('Chapter', 'Part', 'Section', 'Unit')) or
-            (i > 0 and not lines[i-1].strip() and not lines[i+1].strip() if i+1 < len(lines) else True)):
+            
+        if current_list and not line.startswith(('-', '*', '•', '→', '1.', '2.', '3.')):
+            sections.append({"type": list_type, "items": current_list})
+            current_list = None
+            list_type = None
+
+        if len(line) < 90 and (line.isupper() or line.startswith(('Chapter', 'Part', 'Section', 'Unit', '6.', '7.', '8.', '9.'))):
             sections.append({"type": "heading", "text": line})
-        
-        # Question detection
-        elif line.endswith('?') or line.startswith(('What ', 'How ', 'Why ', 'When ', 'Where ', 'Who ')):
+        elif line.endswith('?') or line.startswith(('What ', 'How ', 'Why ', 'When ', 'Where ', 'Who ', 'Explain ')):
             sections.append({"type": "question", "text": line})
-        
-        # Bullet points
-        elif line.startswith(('- ', '* ', '• ', '→ ', '▸ ')):
-            sections.append({"type": "bullet_list", "items": [line[2:]]})
-        
-        # Numbered list
+        elif line.startswith(('- ', '* ', '• ', '→ ')):
+            if not current_list or list_type != "bullet_list":
+                if current_list: sections.append({"type": list_type, "items": current_list})
+                current_list = []
+                list_type = "bullet_list"
+            current_list.append(line[2:].strip())
         elif line[0].isdigit() and '. ' in line[:5]:
-            sections.append({"type": "numbered_list", "items": [line.split('. ', 1)[1]]})
-        
-        # Paragraph
+            clean_item = line.split('. ', 1)[1].strip()
+            if not current_list or list_type != "numbered_list":
+                if current_list: sections.append({"type": list_type, "items": current_list})
+                current_list = []
+                list_type = "numbered_list"
+            current_list.append(clean_item)
+        elif line.startswith(('Note:', 'Important:', '>')):
+            sections.append({"type": "blockquote", "text": line.replace('>', '').strip()})
         else:
             sections.append({"type": "paragraph", "text": line})
-    
+            
+    if current_list:
+        sections.append({"type": list_type, "items": current_list})
+        
     return {
-        "title": title or "Document",
+        "title": title or "Document Output",
         "sections": sections or [{"type": "paragraph", "text": text}]
     }
 
 # =========================
-# BUILD CLEAN PREMIUM HTML
+# ADVANCED TYPESETTING HTML BUILDER
 # =========================
 def build_html(doc):
-    title = doc.get("title", "Document")
+    title = doc.get("title", "DOCUMENT").upper()
     sections = doc.get("sections", [])
     
     html = f"""<!DOCTYPE html>
@@ -167,148 +167,137 @@ def build_html(doc):
 <style>
     @page {{
         size: A4;
-        margin: 2.2cm 2cm 2.5cm 2cm;
-        @bottom-center {{
-            content: counter(page);
+        margin: 3cm 2.2cm 2.8cm 2.2cm;
+        
+        @top-center {{
+            content: "{title}";
             font-size: 9px;
             color: {THEME['footer_text']};
-            font-family: {THEME['font_body']};
+            font-family: {THEME['font_family']};
+            letter-spacing: 1px;
+            border-bottom: 0.5px solid {THEME['border']};
+            padding-bottom: 8px;
+            width: 100%;
         }}
-    }}
-    
-    @page :first {{
-        @bottom-center {{
-            content: none;
+        
+        @bottom-right {{
+            content: "Page " counter(page) " of " counter(pages);
+            font-size: 10px;
+            color: {THEME['footer_text']};
+            font-family: {THEME['font_family']};
         }}
     }}
     
     body {{
-        font-family: {THEME['font_body']};
+        font-family: {THEME['font_family']};
         color: {THEME['text']};
         line-height: 1.7;
-        font-size: 11.5px;
+        font-size: 13px;
     }}
     
-    /* COVER PAGE */
-    .cover {{
+    .doc-main-header {{
         text-align: center;
-        padding-top: 35%;
-        page-break-after: always;
-    }}
-    
-    .cover-title {{
-        font-family: {THEME['font_heading']};
-        font-size: 36px;
+        font-size: 18px;
         font-weight: bold;
-        color: {THEME['heading']};
+        margin-bottom: 40px;
         letter-spacing: 1px;
-        margin-bottom: 20px;
+        color: {THEME['heading']};
+        border-bottom: 2px solid #000000;
+        padding-bottom: 10px;
     }}
     
-    .cover-line {{
-        width: 60px;
-        height: 2px;
-        background: {THEME['accent']};
-        margin: 0 auto 20px auto;
-    }}
-    
-    .cover-date {{
-        font-size: 12px;
-        color: {THEME['footer_text']};
-        letter-spacing: 2px;
-        text-transform: uppercase;
-    }}
-    
-    /* HEADINGS */
     h1 {{
-        font-family: {THEME['font_heading']};
-        font-size: 22px;
+        font-size: 14.5px;
         font-weight: bold;
         color: {THEME['heading']};
-        margin-top: 35px;
-        margin-bottom: 15px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid {THEME['border']};
+        margin-top: 32px;
+        margin-bottom: 14px;
         page-break-after: avoid;
+        letter-spacing: 0.3px;
     }}
     
     h2 {{
-        font-family: {THEME['font_heading']};
-        font-size: 17px;
+        font-size: 13.5px;
         font-weight: bold;
         color: {THEME['subheading']};
-        margin-top: 25px;
-        margin-bottom: 10px;
+        margin-top: 24px;
+        margin-bottom: 12px;
         page-break-after: avoid;
     }}
     
-    /* PARAGRAPH */
     p {{
-        margin-bottom: 10px;
+        margin-top: 0;
+        margin-bottom: 16px;
         text-align: justify;
     }}
     
-    /* QUESTION & ANSWER */
     .question {{
-        font-weight: 600;
+        font-weight: bold;
         color: {THEME['heading']};
-        margin-top: 20px;
-        margin-bottom: 5px;
-        font-size: 12px;
+        margin-top: 24px;
+        margin-bottom: 8px;
     }}
     
     .answer {{
-        margin-left: 0;
-        margin-bottom: 15px;
-        padding-left: 0;
+        margin-bottom: 16px;
     }}
     
-    /* LISTS */
-    ul {{
-        margin: 8px 0 12px 20px;
-        padding: 0;
-        list-style: none;
-    }}
-    
-    ul li {{
-        position: relative;
-        padding-left: 15px;
-        margin-bottom: 5px;
-    }}
-    
-    ul li::before {{
-        content: "—";
-        position: absolute;
-        left: 0;
-        color: {THEME['accent']};
-    }}
-    
-    ol {{
-        margin: 8px 0 12px 20px;
+    ul, ol {{
+        margin: 5px 0 16px 24px;
         padding: 0;
     }}
     
-    ol li {{
-        margin-bottom: 5px;
+    ul li, ol li {{
+        margin-bottom: 6px;
+        text-align: justify;
     }}
     
-    /* DIVIDER */
-    .divider {{
-        text-align: center;
-        margin: 25px 0;
-        color: {THEME['border']};
+    blockquote {{
+        margin: 18px 0;
+        padding: 12px 22px;
+        background-color: {THEME['quote_bg']};
+        border-left: 3px solid #111111;
+        font-style: italic;
+    }}
+    
+    pre {{
+        font-family: 'Courier New', Courier, monospace;
+        background-color: {THEME['code_bg']};
+        padding: 12px;
+        border: 1px solid {THEME['border']};
+        font-size: 11.5px;
+        margin-bottom: 16px;
+    }}
+    
+    table {{
+        width: 100%;
+        border-collapse: collapse;
+        margin: 22px 0;
+        font-size: 12px;
+        page-break-inside: avoid;
+    }}
+    
+    th, td {{
+        border: 1px solid {THEME['border']};
+        padding: 9px 12px;
+        text-align: left;
+    }}
+    
+    th {{
+        background-color: #f5f5f5;
+        font-weight: bold;
+        color: {THEME['heading']};
+    }}
+    
+    tr:nth-child(even) {{
+        background-color: #fcfcfc;
     }}
 </style>
 </head>
 <body>
-<div class="cover">
-    <div class="cover-title">{title}</div>
-    <div class="cover-line"></div>
-    <div class="cover-date">{datetime.now().strftime('%B %d, %Y')}</div>
-</div>
+    <div class="doc-main-header">{title}</div>
 """
     
-    # CONTENT PAGES
     for section in sections:
         stype = section.get("type", "paragraph")
         text = section.get("text", "")
@@ -322,6 +311,10 @@ def build_html(doc):
             html += f'<p class="question">{text}</p>'
         elif stype == "answer":
             html += f'<p class="answer">{text}</p>'
+        elif stype == "blockquote":
+            html += f'blockquote><p>{text}</p></blockquote>'
+        elif stype == "code_block":
+            html += f'<pre><code>{text}</code></pre>'
         elif stype == "bullet_list":
             html += '<ul>'
             for item in items:
@@ -332,11 +325,20 @@ def build_html(doc):
             for item in items:
                 html += f'<li>{item}</li>'
             html += '</ol>'
-        elif stype == "divider":
-            html += '<div class="divider">· · ·</div>'
+        elif stype == "table":
+            html += '<table><thead><tr>'
+            for header in section.get("headers", []):
+                html += f'<th>{header}</th>'
+            html += '</tr></thead><tbody>'
+            for row in section.get("rows", []):
+                html += '<tr>'
+                for cell in row:
+                    html += f'<td>{cell}</td>'
+                html += '</tr>'
+            html += '</tbody></table>'
         else:
             html += f'<p>{text}</p>'
-    
+            
     html += """
 </body>
 </html>"""
@@ -344,33 +346,30 @@ def build_html(doc):
     return html
 
 # =========================
-# PDF Generation
+# API Endpoint
 # =========================
 @app.route("/generate_pdf", methods=["POST"])
 def generate_pdf():
     try:
         data = request.get_json()
         bulk_text = data.get("bulk_text", "")
-        filename = data.get("filename", "document")
+        filename = data.get("filename", "academic_document")
         
         if not bulk_text.strip():
-            return jsonify({"error": "bulk_text is empty"}), 400
+            return jsonify({"error": "bulk_text content is missing"}), 400
         
-        # Analyze text
         try:
             doc = analyze_document(bulk_text)
         except Exception as e:
-            logger.warning(f"Gemini failed, using manual: {e}")
+            logger.warning(f"Advanced parse failed, initializing manual fallback: {e}")
             doc = manual_parse(bulk_text)
         
-        # Build HTML & PDF
         html_content = build_html(doc)
         pdf_bytes = HTML(string=html_content).write_pdf()
         pdf_file = io.BytesIO(pdf_bytes)
         pdf_file.seek(0)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
         return send_file(
             pdf_file,
             mimetype="application/pdf",
@@ -379,35 +378,9 @@ def generate_pdf():
         )
         
     except Exception as e:
-        logger.error(f"Error: {traceback.format_exc()}")
+        logger.error(f"Critical Error Encountered: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-# =========================
-# Test PDF
-# =========================
-@app.route("/test_pdf", methods=["GET"])
-def test_pdf():
-    doc = {
-        "title": "Sample Document",
-        "sections": [
-            {"type": "heading", "text": "Introduction"},
-            {"type": "paragraph", "text": "This is a sample paragraph showing the clean professional formatting."},
-            {"type": "subheading", "text": "Key Features"},
-            {"type": "bullet_list", "items": ["Clean design", "Professional layout", "Auto page breaks", "Smart detection"]},
-            {"type": "heading", "text": "Questions & Answers"},
-            {"type": "question", "text": "What makes a document professional?"},
-            {"type": "answer", "text": "A professional document has consistent formatting, clear hierarchy, and proper spacing."},
-        ]
-    }
-    
-    html_content = build_html(doc)
-    pdf_bytes = HTML(string=html_content).write_pdf()
-    pdf_file = io.BytesIO(pdf_bytes)
-    pdf_file.seek(0)
-    
-    return send_file(pdf_file, mimetype="application/pdf", as_attachment=True, download_name="sample.pdf")
-
-# =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

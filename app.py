@@ -6,9 +6,10 @@ import os
 import io
 import json
 from datetime import datetime
-import base64
-from PIL import Image, ImageDraw, ImageFont
-import textwrap
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -18,7 +19,7 @@ CORS(app)
 # =========================
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found")
+    raise ValueError("❌ GEMINI_API_KEY not found in environment variables")
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
@@ -137,7 +138,7 @@ def home():
     })
 
 # =========================
-# Theme Endpoint
+# Get Themes Endpoint
 # =========================
 @app.route("/themes", methods=["GET"])
 def get_themes():
@@ -190,7 +191,6 @@ Text:
     response = model.generate_content(prompt)
     raw = response.text.strip()
     
-    # Clean JSON response
     if raw.startswith("```json"):
         raw = raw.replace("```json", "").replace("```", "")
     elif raw.startswith("```"):
@@ -199,35 +199,10 @@ Text:
     return json.loads(raw)
 
 # =========================
-# Generate Watermark SVG
-# =========================
-def generate_watermark_svg(theme):
-    watermark_text = "DocCraft AI"
-    opacity = theme.get("watermark_opacity", "0.03")
-    
-    return f"""
-    <div style="
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) rotate(-25deg);
-        font-size: 120px;
-        font-weight: bold;
-        color: {theme['primary']};
-        opacity: {opacity};
-        pointer-events: none;
-        white-space: nowrap;
-        z-index: 1;
-        letter-spacing: 20px;
-        font-family: {theme['font_heading']};
-    ">{watermark_text}</div>
-    """
-
-# =========================
-# Cover Page Generator
+# Generate Cover Page
 # =========================
 def generate_cover_page(title, doc_type, theme, author=""):
-    cover = f"""
+    return f"""
     <div class="cover-page" style="
         page-break-after: always;
         height: 100vh;
@@ -294,17 +269,16 @@ def generate_cover_page(title, doc_type, theme, author=""):
                 font-family: {theme['font_body']};
                 margin-top: 30px;
             ">
-                <p style="margin: 5px 0;">{author if author else ' '}</p>
+                <p style="margin: 5px 0;">{author if author else ''}</p>
                 <p style="margin: 5px 0;">{datetime.now().strftime('%B %d, %Y')}</p>
                 <p style="margin: 10px 0; font-weight: bold; color: {theme['primary']};">Powered by DocCraft AI</p>
             </div>
         </div>
     </div>
     """
-    return cover
 
 # =========================
-# Premium HTML Builder
+# Build Premium HTML
 # =========================
 def build_premium_html(doc, theme_id="modern_professional"):
     theme = THEMES.get(theme_id, THEMES["modern_professional"])
@@ -317,38 +291,29 @@ def build_premium_html(doc, theme_id="modern_professional"):
     reading_time = metadata.get("reading_time_minutes", 0)
     complexity = metadata.get("complexity", "basic")
     
-    # Generate watermark
-    watermark = generate_watermark_svg(theme)
-    
-    # Generate cover page
     cover = generate_cover_page(title, document_type, theme, author)
     
-    # Start building HTML
     html = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="keywords" content="{', '.join(keywords)}">
         <title>{title} - DocCraft AI</title>
         <style>
             @page {{
                 size: A4;
                 margin: 1.8cm;
-                @top-center {{
-                    content: element(header);
-                }}
                 @bottom-center {{
-                    content: element(footer);
+                    content: "Page " counter(page);
+                    font-size: 9px;
+                    color: {theme['footer_text']};
+                    font-family: {theme['font_body']};
                 }}
             }}
             
             @page :first {{
                 margin: 0;
-                @top-center {{
-                    content: none;
-                }}
                 @bottom-center {{
                     content: none;
                 }}
@@ -362,28 +327,11 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 font-size: 12px;
             }}
             
-            /* Header & Footer */
-            .running-header {{
-                position: running(header);
-                font-size: 9px;
-                color: {theme['footer_text']};
-                border-bottom: 1px solid {theme['border']};
-                padding-bottom: 5px;
-                margin-bottom: 20px;
-                display: flex;
-                justify-content: space-between;
+            .content {{
+                position: relative;
+                z-index: 2;
             }}
             
-            .running-footer {{
-                position: running(footer);
-                font-size: 8px;
-                color: {theme['footer_text']};
-                border-top: 1px solid {theme['border']};
-                padding-top: 5px;
-                text-align: center;
-            }}
-            
-            /* Typography */
             h1 {{
                 font-family: {theme['font_heading']};
                 font-size: 28px;
@@ -416,7 +364,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 text-align: justify;
             }}
             
-            /* Special Elements */
             .quote-box {{
                 background: linear-gradient(135deg, {theme['primary']}08, {theme['secondary']}08);
                 border-left: 5px solid {theme['primary']};
@@ -428,7 +375,7 @@ def build_premium_html(doc, theme_id="modern_professional"):
             }}
             
             .quote-box::before {{
-                content: '"';
+                content: '\\201C';
                 position: absolute;
                 top: -10px;
                 left: 10px;
@@ -444,11 +391,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 border-radius: 12px;
                 padding: 20px;
                 margin: 20px 0;
-                position: relative;
-            }}
-            
-            .callout-box strong {{
-                color: {theme['primary']};
             }}
             
             .question-box {{
@@ -458,7 +400,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 margin: 20px 0;
                 font-weight: 600;
                 border-radius: 0 6px 6px 0;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             }}
             
             .answer-box {{
@@ -467,7 +408,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 border-bottom: 1px dashed {theme['border']};
             }}
             
-            /* Lists */
             ul, ol {{
                 margin: 10px 0 10px 25px;
                 padding: 0;
@@ -518,7 +458,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 top: 2px;
             }}
             
-            /* Divider */
             .divider {{
                 text-align: center;
                 margin: 30px 0;
@@ -527,7 +466,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 letter-spacing: 15px;
             }}
             
-            /* Tags */
             .keyword-tag {{
                 display: inline-block;
                 background: {theme['primary']}15;
@@ -539,7 +477,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 border: 1px solid {theme['primary']}30;
             }}
             
-            /* Progress bar for complexity */
             .complexity-indicator {{
                 display: inline-block;
                 padding: 5px 15px;
@@ -552,14 +489,12 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 color: white;
             }}
             
-            /* Table of Contents */
             .toc {{
                 background: {theme['bg']};
                 border: 2px solid {theme['border']};
                 border-radius: 12px;
                 padding: 25px;
                 margin: 30px 0;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
             }}
             
             .toc h2 {{
@@ -578,11 +513,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 font-size: 11px;
             }}
             
-            .toc-item:last-child {{
-                border-bottom: none;
-            }}
-            
-            /* Info bar */
             .info-bar {{
                 display: flex;
                 justify-content: space-between;
@@ -602,50 +532,56 @@ def build_premium_html(doc, theme_id="modern_professional"):
                 color: {theme['subheading']};
             }}
             
-            .info-icon {{
-                font-size: 16px;
+            .watermark {{
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(-25deg);
+                font-size: 120px;
+                font-weight: bold;
                 color: {theme['primary']};
+                opacity: {theme['watermark_opacity']};
+                pointer-events: none;
+                white-space: nowrap;
+                z-index: 1;
+                letter-spacing: 20px;
+                font-family: {theme['font_heading']};
+            }}
+            
+            .footer-note {{
+                margin-top: 40px;
+                padding-top: 15px;
+                border-top: 2px solid {theme['border']};
+                text-align: center;
+                color: {theme['footer_text']};
+                font-size: 10px;
             }}
         </style>
     </head>
     <body>
-        {watermark}
+        <div class="watermark">DocCraft AI</div>
         {cover}
         
-        <!-- Running Header -->
-        <div class="running-header">
-            <div style="font-weight: bold;">{title[:50]}{'...' if len(title) > 50 else ''}</div>
-            <div>{theme['name']} Theme | DocCraft AI</div>
-        </div>
-        
-        <!-- Running Footer -->
-        <div class="running-footer">
-            <div>DocCraft AI Premium | Generated: {datetime.now().strftime('%B %d, %Y %I:%M %p')} | Page <span class="page"></span></div>
-        </div>
+        <div class="content">
+            <div class="info-bar">
+                <div class="info-item">
+                    <span>📄</span>
+                    <span>{document_type.replace('_', ' ').title()}</span>
+                </div>
+                <div class="info-item">
+                    <span>⏱️</span>
+                    <span>{reading_time} min read</span>
+                </div>
+                <div class="info-item">
+                    <span>📅</span>
+                    <span>{datetime.now().strftime('%b %d, %Y')}</span>
+                </div>
+                <div>
+                    <span class="complexity-indicator">{complexity.upper()}</span>
+                </div>
+            </div>
     """
     
-    # Info Bar
-    html += f"""
-        <div class="info-bar" style="page-break-before: always;">
-            <div class="info-item">
-                <span class="info-icon">📄</span>
-                <span>{document_type.replace('_', ' ').title()}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-icon">⏱️</span>
-                <span>{reading_time} min read</span>
-            </div>
-            <div class="info-item">
-                <span class="info-icon">📅</span>
-                <span>{datetime.now().strftime('%b %d, %Y')}</span>
-            </div>
-            <div>
-                <span class="complexity-indicator">{complexity.upper()}</span>
-            </div>
-        </div>
-    """
-    
-    # Keywords
     if keywords:
         html += '<div style="margin: 20px 0;">'
         for kw in keywords:
@@ -654,12 +590,11 @@ def build_premium_html(doc, theme_id="modern_professional"):
     
     # Generate TOC
     toc_items = []
-    for i, section in enumerate(sections):
+    for section in sections:
         if section['type'] in ['heading', 'subheading']:
             toc_items.append({
                 'text': section['text'],
-                'level': section['type'],
-                'index': i
+                'level': section['type']
             })
     
     if toc_items:
@@ -675,8 +610,6 @@ def build_premium_html(doc, theme_id="modern_professional"):
         html += '</div>'
     
     # Process Sections
-    html += '<div class="content" style="position: relative; z-index: 2;">'
-    
     for section in sections:
         section_type = section.get("type", "paragraph")
         text = section.get("text", "")
@@ -695,7 +628,7 @@ def build_premium_html(doc, theme_id="modern_professional"):
             html += f'<div class="answer-box">{text}</div>'
         
         elif section_type == "quote":
-            html += f'<div class="quote-box">💬 {text}</div>'
+            html += f'<div class="quote-box">{text}</div>'
         
         elif section_type == "callout":
             html += f'<div class="callout-box">📌 {text}</div>'
@@ -718,34 +651,12 @@ def build_premium_html(doc, theme_id="modern_professional"):
         else:
             html += f'<p>{text}</p>'
     
-    html += '</div>'
-    
-    # Back cover
+    # Footer
     html += f"""
-        <div style="
-            page-break-before: always;
-            text-align: center;
-            padding: 100px 0;
-            background: linear-gradient(135deg, {theme['primary']}05, {theme['secondary']}05);
-        ">
-            <div style="
-                font-size: 60px;
-                color: {theme['primary']};
-                opacity: 0.3;
-                margin-bottom: 20px;
-            ">✦</div>
-            <h2 style="color: {theme['heading']};">Document Generated by</h2>
-            <h1 style="
-                font-size: 36px;
-                color: {theme['primary']};
-                border: none;
-            ">DocCraft AI</h1>
-            <p style="color: {theme['footer_text']}; margin-top: 20px;">
-                Professional Document Generation Platform
-            </p>
-            <p style="color: {theme['footer_text']}; font-size: 10px; margin-top: 40px;">
-                © {datetime.now().year} DocCraft AI. All rights reserved.
-            </p>
+        <div class="footer-note">
+            <p>© {datetime.now().year} DocCraft AI • Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
+            <p>Theme: {theme['name']} • Premium Document Generation</p>
+        </div>
         </div>
     </body>
     </html>
@@ -754,7 +665,7 @@ def build_premium_html(doc, theme_id="modern_professional"):
     return html
 
 # =========================
-# PDF Generation Endpoint
+# Generate PDF Endpoint
 # =========================
 @app.route("/generate_pdf", methods=["POST"])
 def generate_pdf():
@@ -767,7 +678,6 @@ def generate_pdf():
         theme_id = data.get("theme", "modern_professional")
         author = data.get("author", "")
         
-        # Validate theme
         if theme_id not in THEMES:
             theme_id = "modern_professional"
         
@@ -817,7 +727,7 @@ def generate_pdf():
         }), 500
 
 # =========================
-# Quick Preview Endpoint
+# Preview Endpoint
 # =========================
 @app.route("/preview", methods=["POST"])
 def preview():
@@ -846,4 +756,5 @@ def preview():
 # Run Server
 # =========================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)

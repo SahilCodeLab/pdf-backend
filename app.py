@@ -17,6 +17,7 @@ import json
 import time
 import re
 from datetime import datetime
+import markdown
 from dotenv import load_dotenv
 import logging
 import traceback

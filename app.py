@@ -200,28 +200,50 @@ class PremiumTheme:
 # ADVANCED TEXT PARSER WITH MULTI-STAGE INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════════════
 class PremiumTextParser:
-    """Multi-stage intelligent text parser with fallback hierarchy"""
+    """Intelligent text parser using Gemini AI and Markdown engine"""
     
     def __init__(self, theme):
         self.theme = theme
-    
-    def parse_inline_styles(self, text):
-        """Convert markdown-style formatting to HTML"""
-        # Bold patterns
-        text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-        text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
+
+    def parse(self, text):
+        """
+        1. AI se raw text ko structured Markdown mein convert karwaye.
+        2. Markdown ko library ki madad se HTML mein convert kare.
+        """
+        print("🤖 Parsing and Formatting with Gemini...")
         
-        # Italic patterns
-        text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
-        text = re.sub(r'_(.+?)_', r'<em>\1</em>', text)
+        # AI Prompt: Ye instruction AI ko raw text ko sahi formatting dene par majboor karegi
+        prompt = f"""
+        Convert the following raw text into structured, professional Markdown format. 
+        - Use # for Titles, ## for Sections, ### for Subsections.
+        - Organize data into Markdown tables where applicable.
+        - Use - for bullets, 1. for numbered lists.
+        - Use **bold** and *italic* as needed.
+        - Ensure all content is preserved without summarization.
         
-        # Code patterns
-        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        Raw Text:
+        {text}
+        """
         
-        # Strikethrough
-        text = re.sub(r'~~(.+?)~~', r'<del>\1</del>', text)
-        
-        return text
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            markdown_text = response.text
+            
+            # Markdown library ko HTML mein convert karne ke liye use karein
+            # 'tables' aur 'fenced_code' extensions zaroori hain
+            html_content = markdown.markdown(
+                markdown_text, 
+                extensions=['tables', 'fenced_code']
+            )
+            return html_content
+            
+        except Exception as e:
+            print(f"❌ Error in parsing: {e}")
+            # Agar AI fail ho, toh fallback mein simple text ko HTML paragraph bana do
+            return f"<p>{text}</p>"
     
     def detect_document_type(self, text):
         """Detect the type of document for specialized parsing"""

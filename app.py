@@ -6,8 +6,14 @@
 
 Fast, reliable PDF generation with intelligent manual parsing.
 No API dependencies - works offline!
+
+Author: Premium PDF Generator
+Version: 2.1
 """
 
+# ══════════════════════════════════════════════════════════════════════════════
+# IMPORTS
+# ══════════════════════════════════════════════════════════════════════════════
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from weasyprint import HTML, CSS
@@ -17,7 +23,6 @@ import json
 import time
 import re
 from datetime import datetime
-import markdown
 from dotenv import load_dotenv
 import logging
 import traceback
@@ -72,6 +77,7 @@ except Exception as e:
 class PremiumTheme:
     """Premium theme configurations for different document styles"""
     
+    # Theme 1: Classic Academic - Traditional scholarly style
     CLASSIC_ACADEMIC = {
         "name": "Classic Academic",
         "primary": "#1a365d",
@@ -92,6 +98,7 @@ class PremiumTheme:
         "code_font": "'Courier New', Courier, monospace",
     }
     
+    # Theme 2: Modern Corporate - Professional business look
     MODERN_CORPORATE = {
         "name": "Modern Corporate",
         "primary": "#1e3a5f",
@@ -112,6 +119,7 @@ class PremiumTheme:
         "code_font": "'Courier New', monospace",
     }
     
+    # Theme 3: Elegant Legal - Formal legal documents
     ELEGANT_LEGAL = {
         "name": "Elegant Legal",
         "primary": "#1c1917",
@@ -132,6 +140,7 @@ class PremiumTheme:
         "code_font": "'Courier New', Courier, monospace",
     }
     
+    # Theme 4: Executive Luxury - Premium executive documents
     EXECUTIVE_LUXURY = {
         "name": "Executive Luxury",
         "primary": "#18181b",
@@ -152,6 +161,7 @@ class PremiumTheme:
         "code_font": "'Courier New', monospace",
     }
     
+    # Theme 5: Scientific Journal - Academic research papers
     SCIENTIFIC_JOURNAL = {
         "name": "Scientific Journal",
         "primary": "#0c4a6e",
@@ -174,6 +184,7 @@ class PremiumTheme:
     
     @classmethod
     def get_theme(cls, theme_name):
+        """Get theme by name with fallback to default"""
         themes = {
             'classic': cls.CLASSIC_ACADEMIC,
             'corporate': cls.MODERN_CORPORATE,
@@ -196,14 +207,17 @@ class FastTextParser:
     
     def parse_inline_styles(self, text):
         """Convert markdown-style formatting to HTML"""
-        # Bold
+        # Bold patterns
         text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
         text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
-        # Italic
+        
+        # Italic patterns
         text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
         text = re.sub(r'_(.+?)_', r'<em>\1</em>', text)
-        # Code
+        
+        # Code patterns
         text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        
         return text
     
     def detect_document_type(self, text):
@@ -246,12 +260,15 @@ class FastTextParser:
                     title = line.replace('#', '').strip()
                     continue
             
-            # Metadata
-            for pattern, key in [
+            # Metadata detection
+            metadata_patterns = [
                 (r'(?:Author|By)[:\s]+(.+)', 'author'),
                 (r'(?:Date|Published)[:\s]+(.+)', 'date'),
                 (r'(?:Version|Rev)[:\s]+(.+)', 'version'),
-            ]:
+                (r'(?:Institution|Organization|Company)[:\s]+(.+)', 'institution'),
+            ]
+            
+            for pattern, key in metadata_patterns:
                 match = re.search(pattern, line, re.IGNORECASE)
                 if match:
                     metadata[key] = match.group(1).strip()
@@ -265,34 +282,50 @@ class FastTextParser:
                     list_type = None
                 level = len(re.match(r'^(#+)\s', line).group(1)) if line.startswith('#') else 1
                 clean = re.sub(r'^#+\s*', '', line).strip()
-                sections.append({"type": "heading", "text": self.parse_inline_styles(clean), "level": level})
+                sections.append({
+                    "type": "heading",
+                    "text": self.parse_inline_styles(clean),
+                    "level": level
+                })
                 continue
             
             # Questions
-            if line.endswith('?') or re.match(r'^(What|How|Why|When|Where|Who|Which|Explain)', line, re.I):
+            if line.endswith('?') or re.match(r'^(What|How|Why|When|Where|Who|Which|Explain|Describe|Define|Compare|Analyze)', line, re.I):
                 sections.append({"type": "question", "text": line_parsed})
                 continue
             
             # Answers
-            if re.match(r'^(Answer:|Solution:|=>|→)', line):
-                clean = re.sub(r'^(Answer:|Solution:|=>|→)\s*', '', line)
+            if re.match(r'^(Answer:|Solution:|Definition:|=>|→|A:|S:)', line):
+                clean = re.sub(r'^(Answer:|Solution:|Definition:|=>|→|A:|S:)\s*', '', line)
                 sections.append({"type": "answer", "text": self.parse_inline_styles(clean)})
                 continue
             
-            # Blockquotes
-            if line.startswith(('>', 'Note:', 'Important:', '⚠️', '📌', '💡')):
-                clean = re.sub(r'^[>\s]*(Note:|Important:|⚠️|📌|💡)\s*', '', line)
-                sections.append({"type": "blockquote", "text": self.parse_inline_styles(clean)})
+            # Blockquotes / Notes
+            if line.startswith(('>', 'Note:', 'Important:', '⚠️', '📌', '💡', 'NB:', 'WARNING:')):
+                clean = re.sub(r'^[>\s]*(Note:|Important:|⚠️|📌|💡|NB:|WARNING:)\s*', '', line)
+                sections.append({
+                    "type": "blockquote",
+                    "text": self.parse_inline_styles(clean),
+                    "note_type": "important" if any(x in line for x in ['Important', '⚠️', 'NB', 'WARNING']) else "note"
+                })
                 continue
             
             # Tables
             if '|' in line and line.count('|') >= 2:
                 cells = [c.strip() for c in line.split('|')[1:-1]]
-                if not all(re.match(r'^[-:]+$', c) for c in cells if c):
-                    if sections and sections[-1].get('type') == 'table':
-                        sections[-1]['rows'].append(cells)
-                    else:
-                        sections.append({"type": "table", "headers": cells, "rows": []})
+                
+                # Skip separator rows
+                if all(re.match(r'^[-:]+$', c) for c in cells if c):
+                    continue
+                
+                if sections and sections[-1].get('type') == 'table':
+                    sections[-1]['rows'].append(cells)
+                else:
+                    sections.append({
+                        "type": "table",
+                        "headers": cells,
+                        "rows": []
+                    })
                 continue
             
             # Bullet lists
@@ -317,7 +350,7 @@ class FastTextParser:
                 current_list.append(self.parse_inline_styles(numbered_match.group(2)))
                 continue
             
-            # Roman numerals
+            # Roman numeral lists
             roman_match = re.match(r'^([IVX]+)[.)]\s+(.+)', line)
             if roman_match:
                 if not current_list or list_type != "numbered_list":
@@ -328,7 +361,7 @@ class FastTextParser:
                 current_list.append(self.parse_inline_styles(roman_match.group(2)))
                 continue
             
-            # Paragraphs
+            # Paragraphs - handle continuation
             if sections and sections[-1]['type'] == 'paragraph' and len(sections[-1]['text'].split()) < 60:
                 sections[-1]['text'] += ' ' + line_parsed
             else:
@@ -338,6 +371,7 @@ class FastTextParser:
                     list_type = None
                 sections.append({"type": "paragraph", "text": line_parsed})
         
+        # Final cleanup
         if current_list:
             sections.append({"type": list_type, "items": current_list})
         
@@ -390,7 +424,7 @@ body {{
     line-height: 1.7;
 }}
 
-/* Cover Page */
+/* Cover Page Styles */
 .cover-page {{
     text-align: center;
     padding-top: 100px;
@@ -442,7 +476,7 @@ body {{
     text-align: center;
 }}
 
-/* TOC Page */
+/* Table of Contents Styles */
 .toc-page {{
     page-break-after: always;
 }}
@@ -480,7 +514,7 @@ body {{
     color: {theme['subheading']};
 }}
 
-/* Main Header */
+/* Main Document Header */
 .doc-header {{
     text-align: center;
     font-size: 13pt;
@@ -561,7 +595,7 @@ ol li {{
     margin-bottom: 8px;
 }}
 
-/* Q&A */
+/* Q&A Sections */
 .question {{
     font-weight: bold;
     color: {theme['heading']};
@@ -722,7 +756,7 @@ tr:nth-child(even) {{
         return html
     
     def build_element(self, section):
-        """Build HTML for a section"""
+        """Build HTML for a single section element"""
         stype = section.get('type', 'paragraph')
         text = section.get('text', '')
         items = section.get('items', [])
@@ -809,14 +843,18 @@ tr:nth-child(even) {{
 <body>
 """
         
+        # Add cover page
         if self.has_cover:
             html += self.build_cover_page(doc)
         
+        # Add table of contents
         if self.has_toc:
             html += self.build_toc(doc)
         
+        # Add main content header
         html += f'<div class="doc-header">{title}</div>'
         
+        # Add all sections
         for section in doc.get('sections', []):
             html += self.build_element(section)
         
@@ -828,7 +866,7 @@ tr:nth-child(even) {{
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PDF GENERATOR
+# PDF GENERATOR ENGINE
 # ══════════════════════════════════════════════════════════════════════════════
 class PremiumPDFGenerator:
     """Premium PDF generation engine"""
@@ -843,7 +881,7 @@ class PremiumPDFGenerator:
         """Generate premium PDF"""
         logger.info(f"📄 Generating PDF - Theme: {self.theme['name']}")
         
-        # Parse document
+        # Parse document structure
         doc = self.parser.parse(text)
         sections_count = len(doc.get('sections', []))
         logger.info(f"✅ Parsed {sections_count} sections")
@@ -862,7 +900,7 @@ class PremiumPDFGenerator:
         return pdf_bytes
     
     def generate_to_bytes(self, text):
-        """Generate PDF and return bytes"""
+        """Generate PDF and return as bytes"""
         pdf_bytes = self.generate(text)
         pdf_file = io.BytesIO(pdf_bytes)
         pdf_file.seek(0)
@@ -872,59 +910,70 @@ class PremiumPDFGenerator:
 # ══════════════════════════════════════════════════════════════════════════════
 # FLASK API ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
+
 @app.route("/", methods=["GET"])
 def index():
-    """Health check"""
+    """Health check endpoint"""
     return jsonify({
         "status": "✅ Premium PDF Generator v2.1 Running",
+        "version": "2.1",
         "speed": "⚡ Fast Manual Parser (No API calls)",
         "gemini": "Enabled" if GEMINI_AVAILABLE else "Disabled",
         "themes": ["classic", "corporate", "legal", "luxury", "scientific"],
         "endpoints": {
-            "POST /generate_pdf": "Generate PDF",
-            "POST /generate_premium_pdf": "Generate with options",
-            "GET /themes": "List themes"
+            "GET /": "Health check",
+            "GET /themes": "List available themes",
+            "POST /generate_pdf": "Generate basic PDF",
+            "POST /generate_premium_pdf": "Generate with full options"
         }
     })
 
 @app.route("/themes", methods=["GET"])
 def list_themes():
-    """List available themes"""
+    """List all available themes"""
     return jsonify({
+        "success": True,
         "themes": {
-            "classic": "Classic Academic - Traditional scholarly style",
-            "corporate": "Modern Corporate - Professional business",
-            "legal": "Elegant Legal - Formal legal documents",
-            "luxury": "Executive Luxury - Premium executive",
-            "scientific": "Scientific Journal - Research papers"
+            "classic": "Classic Academic - Traditional scholarly style with serif fonts",
+            "corporate": "Modern Corporate - Professional business documents",
+            "legal": "Elegant Legal - Formal legal document styling",
+            "luxury": "Executive Luxury - Premium executive documents",
+            "scientific": "Scientific Journal - Academic research papers"
         }
     })
 
 @app.route("/generate_pdf", methods=["POST"])
 def generate_pdf():
-    """Generate premium PDF"""
+    """Generate premium PDF document"""
     try:
         data = request.get_json()
         
+        # Validate input
         if not data:
             return jsonify({"error": "No JSON data received"}), 400
         
         bulk_text = data.get("bulk_text", "")
         if not bulk_text.strip():
-            return jsonify({"error": "bulk_text is missing"}), 400
+            return jsonify({"error": "bulk_text content is missing"}), 400
         
+        # Get parameters
         filename = data.get("filename", "document")
         theme_name = data.get("theme", "classic")
         
-        logger.info(f"📝 Processing: {filename}")
+        logger.info(f"📝 Processing request for: {filename}")
         
+        # Generate PDF
         generator = PremiumPDFGenerator(theme_name)
         pdf_bytes = generator.generate(bulk_text)
         
+        # Prepare response
         pdf_file = io.BytesIO(pdf_bytes)
         pdf_file.seek(0)
         
+        # Generate timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        logger.info(f"✅ PDF generated successfully: {filename}_{timestamp}.pdf")
         
         return send_file(
             pdf_file,
@@ -934,12 +983,15 @@ def generate_pdf():
         )
         
     except Exception as e:
-        logger.error(f"❌ Error: {traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"❌ Error generating PDF: {traceback.format_exc()}")
+        return jsonify({
+            "error": str(e),
+            "message": "Failed to generate PDF"
+        }), 500
 
 @app.route("/generate_premium_pdf", methods=["POST"])
 def generate_premium_pdf():
-    """Generate PDF with full options"""
+    """Generate PDF with full premium options"""
     try:
         data = request.get_json()
         
@@ -948,8 +1000,9 @@ def generate_premium_pdf():
         
         bulk_text = data.get("bulk_text", "")
         if not bulk_text.strip():
-            return jsonify({"error": "bulk_text is missing"}), 400
+            return jsonify({"error": "bulk_text content is missing"}), 400
         
+        # Full premium options
         premium_options = {
             'theme': data.get('theme', 'classic'),
             'cover_page': data.get('cover_page', True),
@@ -959,7 +1012,7 @@ def generate_premium_pdf():
             'footer_text': data.get('footer_text', ''),
         }
         
-        logger.info(f"✨ Premium request: {data.get('filename', 'document')}")
+        logger.info(f"✨ Processing premium request: {data.get('filename', 'document')}")
         
         generator = PremiumPDFGenerator(premium_options['theme'], premium_options)
         pdf_bytes = generator.generate(bulk_text)
@@ -977,8 +1030,16 @@ def generate_premium_pdf():
         )
         
     except Exception as e:
-        logger.error(f"❌ Error: {traceback.format_exc()}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"❌ Premium PDF generation failed: {traceback.format_exc()}")
+        return jsonify({
+            "error": str(e),
+            "message": "Premium PDF generation failed"
+        }), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ERROR HANDLERS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.errorhandler(404)
 def not_found(e):
@@ -990,26 +1051,39 @@ def server_error(e):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# RUN SERVER
+# APPLICATION LAUNCH
 # ══════════════════════════════════════════════════════════════════════════════
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("DEBUG", "False").lower() == "true"
     
     print("""
-    ╔════════════════════════════════════════════════════════════════════╗
-    ║     ██████╗ ██╗   ██╗███╗   ██╗ ██████╗ ███████╗ ██████╗ ███╗   ██╗
-    ║     ██╔══██╗██║   ██║████╗  ██║██╔════╝ ██╔════╝██╔═══██╗████╗  ██║
-    ║     ██████╔╝██║   ██║██╔██╗ ██║██║  ███╗█████╗  ██║   ██║██╔██╗ ██║
-    ║     ██╔══██╗██║   ██║██║╚██╗██║██║   ██║██╔══╝  ██║   ██║██║╚██╗██║
-    ║     ██████╔╝╚██████╔╝██║ ╚████║╚██████╔╝███████╗╚██████╔╝██║ ╚████║
-    ║     ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝
-    ║                      v2.1 - SPEED OPTIMIZED
-    ╚════════════════════════════════════════════════════════════════════╝
+    ╔════════════════════════════════════════════════════════════════════════════╗
+    ║                                                                            ║
+    ║     ██████╗ ██╗   ██╗███╗   ██╗ ██████╗ ███████╗ ██████╗ ███╗   ██╗       ║
+    ║     ██╔══██╗██║   ██║████╗  ██║██╔════╝ ██╔════╝██╔═══██╗████╗  ██║       ║
+    ║     ██████╔╝██║   ██║██╔██╗ ██║██║  ███╗█████╗  ██║   ██║██╔██╗ ██║       ║
+    ║     ██╔══██╗██║   ██║██║╚██╗██║██║   ██║██╔══╝  ██║   ██║██║╚██╗██║       ║
+    ║     ██████╔╝╚██████╔╝██║ ╚████║╚██████╔╝███████╗╚██████╔╝██║ ╚████║       ║
+    ║     ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝       ║
+    ║                                                                            ║
+    ║                    PREMIUM PDF GENERATOR v2.1                              ║
+    ║                   🚀 Speed Optimized Edition 🚀                            ║
+    ║                                                                            ║
+    ╚════════════════════════════════════════════════════════════════════════════╝
     """)
     
-    logger.info(f"🚀 Server: http://0.0.0.0:{port}")
+    logger.info(f"🚀 Server starting on http://0.0.0.0:{port}")
+    logger.info(f"🔧 Debug mode: {debug}")
     logger.info(f"⚡ Manual Parser: Active (No API delays)")
-    logger.info(f"🤖 Gemini: {'Enabled' if GEMINI_AVAILABLE else 'Disabled'}")
+    logger.info(f"🤖 Gemini AI: {'Enabled' if GEMINI_AVAILABLE else 'Disabled'}")
+    logger.info("")
+    logger.info("📌 Available Endpoints:")
+    logger.info("   GET  /            - Health check")
+    logger.info("   GET  /themes      - List themes")
+    logger.info("   POST /generate_pdf - Generate PDF")
+    logger.info("   POST /generate_premium_pdf - Full options")
+    logger.info("")
     
     app.run(host="0.0.0.0", port=port, debug=debug)

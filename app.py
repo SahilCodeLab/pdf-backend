@@ -161,6 +161,53 @@ class PremiumTheme:
         "code_font": "'Courier New', monospace",
     }
     
+    # Theme 6: Vintage Paper - Classic look with vintage paper background
+    VINTAGE = {
+        "name": "Vintage Paper",
+        "primary": "#5b4636",
+        "secondary": "#a67c52",
+        "accent": "#c49e71",
+        "gold": "#d4af37",
+        "text": "#3e2723",
+        "heading": "#3e2723",
+        "subheading": "#5d4037",
+        "border": "#8d6e63",
+        "footer_text": "#6d4c41",
+        "code_bg": "#f5f1e6",
+        "quote_bg": "#f1e7d0",
+        "highlight_bg": "#fff9c4",
+        "table_alt": "#faf3e0",
+        "font_family": "'Georgia', 'Times New Roman', serif",
+        "heading_font": "'Georgia', serif",
+        "code_font": "'Courier New', monospace",
+        "background_image": "url('vintage-paper.jpg')",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
+    }
+
+    # Theme 7: Corporate Vibe - Modern professional look
+    CORPORATE_VIBE = {
+        "name": "Corporate Vibe",
+        "primary": "#0d47a1",
+        "secondary": "#1976d2",
+        "accent": "#64b5f6",
+        "gold": "#ffb300",
+        "text": "#212121",
+        "heading": "#0d47a1",
+        "subheading": "#1565c0",
+        "border": "#90a4ae",
+        "footer_text": "#607d8b",
+        "code_bg": "#eceff1",
+        "quote_bg": "#e3f2fd",
+        "highlight_bg": "#fff9c4",
+        "table_alt": "#f5f5f5",
+        "font_family": "'Helvetica Neue', Helvetica, Arial, sans-serif",
+        "heading_font": "'Helvetica Neue', Arial, sans-serif",
+        "code_font": "'Courier New', monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
+    }
+
     # Theme 5: Scientific Journal - Academic research papers
     SCIENTIFIC_JOURNAL = {
         "name": "Scientific Journal",
@@ -180,6 +227,83 @@ class PremiumTheme:
         "font_family": "'Times New Roman', Georgia, serif",
         "heading_font": "'Times New Roman', Georgia, serif",
         "code_font": "'Courier New', monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
+    }
+
+    # Theme 8: Modern Minimalist - Clean zinc/gray design
+    MINIMALIST = {
+        "name": "Modern Minimalist",
+        "primary": "#09090b",
+        "secondary": "#27272a",
+        "accent": "#71717a",
+        "gold": "#a1a1aa",
+        "text": "#18181b",
+        "heading": "#09090b",
+        "subheading": "#27272a",
+        "border": "#e4e4e7",
+        "footer_text": "#71717a",
+        "code_bg": "#f4f4f5",
+        "quote_bg": "#fafafa",
+        "highlight_bg": "#f4f4f5",
+        "table_alt": "#fafafa",
+        "font_family": "'Inter', 'Segoe UI', Arial, sans-serif",
+        "heading_font": "'Inter', 'Segoe UI', Arial, sans-serif",
+        "code_font": "'Courier New', monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": "",
+        "gradient": "",
+        "background_image": ""
+    }
+
+    # Theme 9: Midnight Tech - Dark slate design with blue accents
+    MIDNIGHT = {
+        "name": "Midnight Tech",
+        "primary": "#38bdf8",
+        "secondary": "#0ea5e9",
+        "accent": "#f43f5e",
+        "gold": "#fbbf24",
+        "text": "#cbd5e1",
+        "heading": "#f8fafc",
+        "subheading": "#38bdf8",
+        "border": "#334155",
+        "footer_text": "#64748b",
+        "code_bg": "#1e293b",
+        "quote_bg": "#1e293b",
+        "highlight_bg": "#334155",
+        "table_alt": "#1e293b",
+        "font_family": "'Inter', 'Segoe UI', Arial, sans-serif",
+        "heading_font": "'Inter', 'Segoe UI', Arial, sans-serif",
+        "code_font": "'Courier New', monospace",
+        "bg_color": "#0f172a",
+        "extra_body_css": "",
+        "gradient": "",
+        "background_image": ""
+    }
+
+    # Theme 10: Cyberpunk Creative - Neon pink and cyan details on dark background
+    CYBERPUNK = {
+        "name": "Cyberpunk Creative",
+        "primary": "#ec4899",
+        "secondary": "#06b6d4",
+        "accent": "#facc15",
+        "gold": "#facc15",
+        "text": "#cbd5e1",
+        "heading": "#fdf2f8",
+        "subheading": "#ec4899",
+        "border": "#4b5563",
+        "footer_text": "#9ca3af",
+        "code_bg": "#111827",
+        "quote_bg": "#1f2937",
+        "highlight_bg": "#ec4899",
+        "table_alt": "#1f2937",
+        "font_family": "'Consolas', 'Courier New', Courier, monospace",
+        "heading_font": "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        "code_font": "'Courier New', monospace",
+        "bg_color": "#090d16",
+        "extra_body_css": "",
+        "gradient": "",
+        "background_image": ""
     }
     
     @classmethod
@@ -191,6 +315,11 @@ class PremiumTheme:
             'legal': cls.ELEGANT_LEGAL,
             'luxury': cls.EXECUTIVE_LUXURY,
             'scientific': cls.SCIENTIFIC_JOURNAL,
+            'vintage': cls.VINTAGE,
+            'corporate_vibe': cls.CORPORATE_VIBE,
+            'minimalist': cls.MINIMALIST,
+            'midnight': cls.MIDNIGHT,
+            'cyberpunk': cls.CYBERPUNK,
             'default': cls.CLASSIC_ACADEMIC
         }
         return themes.get(theme_name.lower(), cls.CLASSIC_ACADEMIC)
@@ -397,337 +526,1509 @@ class PremiumHTMLBuilder:
         self.quality = self.options.get('quality', 'high')
     
     def build_css(self):
-        """Generate WeasyPrint-compatible CSS"""
+        """Generate WeasyPrint-compatible CSS customized per theme"""
         theme = self.theme
+        theme_id = theme['name'].lower().replace(' ', '-')
         
         sizes = {
-            'standard': {'base': '11pt', 'h1': '16pt', 'h2': '14pt'},
+            'standard': {'base': '11pt', 'h1': '16pt', 'h2': '13pt'},
             'high': {'base': '12pt', 'h1': '18pt', 'h2': '15pt'},
             'premium': {'base': '13pt', 'h1': '20pt', 'h2': '17pt'}
         }
         s = sizes.get(self.quality, sizes['high'])
         
-        return f"""
-@page {{
-    size: A4;
-    margin: 2.5cm 2cm 2.5cm 2.5cm;
-}}
+        # 1. BASE COMMON CSS RULES (Reset & Defaults)
+        base_css = f"""
+        * {{
+            box-sizing: border-box;
+        }}
+        html, body {{
+            margin: 0;
+            padding: 0;
+            background-color: {theme['bg_color']};
+        }}
+        body {{
+            font-family: {theme['font_family']};
+            font-size: {s['base']};
+            color: {theme['text']};
+            line-height: 1.7;
+        }}
+        ul, ol {{
+            margin: 12px 0 20px 28px;
+            padding: 0;
+        }}
+        ul li {{
+            list-style-type: disc;
+            margin-bottom: 6px;
+        }}
+        ol li {{
+            list-style-type: decimal;
+            margin-bottom: 6px;
+        }}
+        strong {{
+            color: {theme['heading']};
+            font-weight: bold;
+        }}
+        em {{
+            font-style: italic;
+        }}
+        code {{
+            font-family: {theme['code_font']};
+            background-color: {theme['code_bg']};
+            padding: 2px 5px;
+            font-size: 0.9em;
+            color: {theme['accent']};
+            border-radius: 3px;
+        }}
+        pre {{
+            font-family: {theme['code_font']};
+            background-color: {theme['code_bg']};
+            padding: 15px;
+            border: 1px solid {theme['border']};
+            border-left: 4px solid {theme['secondary']};
+            font-size: 10pt;
+            margin: 20px 0;
+            page-break-inside: avoid;
+            border-radius: 4px;
+            color: {theme['text']};
+        }}
+        pre code {{
+            background: none;
+            padding: 0;
+            color: inherit;
+        }}
+        .code-language {{
+            display: inline-block;
+            background-color: {theme['secondary']};
+            color: white;
+            padding: 2px 8px;
+            font-size: 8pt;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: -15px;
+            border-radius: 3px 3px 0 0;
+            font-family: {theme['code_font']};
+        }}
+        .table-caption {{
+            font-size: 9pt;
+            color: {theme['footer_text']};
+            text-align: center;
+            margin-top: -15px;
+            margin-bottom: 18px;
+            font-style: italic;
+        }}
+        .divider {{
+            border: none;
+            border-top: 1px solid {theme['border']};
+            margin: 35px 0;
+        }}
+        """
 
-@page :first {{
-    margin: 2cm;
-}}
-
-body {{
-    font-family: {theme['font_family']};
-    font-size: {s['base']};
-    color: {theme['text']};
-    line-height: 1.7;
-}}
-
-/* Cover Page Styles */
-.cover-page {{
-    text-align: center;
-    padding-top: 100px;
-    page-break-after: always;
-}}
-
-.cover-badge {{
-    display: inline-block;
-    background-color: {theme['primary']};
-    color: white;
-    padding: 5px 18px;
-    font-size: 9pt;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 25px;
-}}
-
-.cover-title {{
-    font-family: {theme['heading_font']};
-    font-size: 26pt;
-    font-weight: bold;
-    color: {theme['heading']};
-    margin-bottom: 12px;
-}}
-
-.cover-subtitle {{
-    font-size: 13pt;
-    color: {theme['subheading']};
-    margin-bottom: 40px;
-    font-style: italic;
-}}
-
-.cover-divider {{
-    width: 100px;
-    height: 2px;
-    background-color: {theme['accent']};
-    margin: 30px auto;
-}}
-
-.cover-meta {{
-    margin-top: 50px;
-    font-size: 10pt;
-    color: {theme['footer_text']};
-}}
-
-.cover-meta p {{
-    margin: 4px 0;
-    text-indent: 0;
-    text-align: center;
-}}
-
-/* Table of Contents Styles */
-.toc-page {{
-    page-break-after: always;
-}}
-
-.toc-header {{
-    font-family: {theme['heading_font']};
-    font-size: 20pt;
-    color: {theme['heading']};
-    text-align: center;
-    margin-bottom: 40px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid {theme['heading']};
-}}
-
-.toc-list {{
-    list-style: none;
-    padding: 0;
-}}
-
-.toc-item {{
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px dotted {theme['border']};
-    font-size: 11pt;
-}}
-
-.toc-item-title {{
-    color: {theme['text']};
-}}
-
-.toc-section {{
-    padding-left: 25px;
-    font-size: 10pt;
-    color: {theme['subheading']};
-}}
-
-/* Main Document Header */
-.doc-header {{
-    text-align: center;
-    font-size: 13pt;
-    font-weight: bold;
-    margin-bottom: 40px;
-    letter-spacing: 2px;
-    color: {theme['heading']};
-    border-bottom: 2px double {theme['heading']};
-    padding-bottom: 12px;
-    text-transform: uppercase;
-}}
-
-/* Headings */
-h1 {{
-    font-family: {theme['heading_font']};
-    font-size: {s['h1']};
-    font-weight: bold;
-    color: {theme['heading']};
-    margin-top: 35px;
-    margin-bottom: 18px;
-    page-break-after: avoid;
-    border-left: 4px solid {theme['accent']};
-    padding-left: 12px;
-}}
-
-h2 {{
-    font-family: {theme['heading_font']};
-    font-size: {s['h2']};
-    font-weight: bold;
-    color: {theme['subheading']};
-    margin-top: 28px;
-    margin-bottom: 14px;
-    page-break-after: avoid;
-}}
-
-/* Paragraphs */
-p {{
-    margin-top: 0;
-    margin-bottom: 14px;
-    text-align: justify;
-    text-indent: 2em;
-}}
-
-p:first-of-type {{
-    text-indent: 0;
-}}
-
-strong {{
-    color: {theme['heading']};
-    font-weight: bold;
-}}
-
-em {{
-    font-style: italic;
-}}
-
-code {{
-    font-family: {theme['code_font']};
-    background-color: {theme['code_bg']};
-    padding: 1px 5px;
-    font-size: 0.9em;
-    color: {theme['accent']};
-}}
-
-/* Lists */
-ul, ol {{
-    margin: 12px 0 20px 28px;
-    padding: 0;
-}}
-
-ul li {{
-    list-style-type: disc;
-    margin-bottom: 8px;
-}}
-
-ol li {{
-    list-style-type: decimal;
-    margin-bottom: 8px;
-}}
-
-/* Q&A Sections */
-.question {{
-    font-weight: bold;
-    color: {theme['heading']};
-    margin-top: 25px;
-    margin-bottom: 10px;
-    padding: 12px 18px;
-    background-color: {theme['quote_bg']};
-    border-left: 4px solid {theme['accent']};
-    page-break-after: avoid;
-}}
-
-.answer {{
-    margin-bottom: 16px;
-    padding-left: 18px;
-    border-left: 2px solid {theme['border']};
-}}
-
-/* Blockquotes */
-blockquote {{
-    margin: 20px 0;
-    padding: 15px 20px;
-    background-color: {theme['quote_bg']};
-    border-left: 4px solid {theme['accent']};
-    font-style: italic;
-}}
-
-blockquote p {{
-    margin-bottom: 0;
-    text-indent: 0;
-    text-align: left;
-}}
-
-/* Code Blocks */
-pre {{
-    font-family: {theme['code_font']};
-    background-color: {theme['code_bg']};
-    padding: 15px;
-    border: 1px solid {theme['border']};
-    border-left: 4px solid {theme['secondary']};
-    font-size: 10pt;
-    margin: 20px 0;
-    page-break-inside: avoid;
-}}
-
-pre code {{
-    background: none;
-    padding: 0;
-}}
-
-.code-language {{
-    display: inline-block;
-    background-color: {theme['secondary']};
-    color: white;
-    padding: 2px 8px;
-    font-size: 8pt;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-}}
-
-/* Tables */
-table {{
-    width: 100%;
-    border-collapse: collapse;
-    margin: 25px 0;
-    font-size: 10pt;
-    page-break-inside: avoid;
-}}
-
-th {{
-    background-color: {theme['primary']};
-    color: white;
-    font-weight: bold;
-    padding: 12px 14px;
-    text-align: left;
-    border: 1px solid {theme['secondary']};
-}}
-
-td {{
-    border: 1px solid {theme['border']};
-    padding: 10px 12px;
-    text-align: left;
-}}
-
-tr:nth-child(even) {{
-    background-color: {theme['table_alt']};
-}}
-
-.table-caption {{
-    font-size: 9pt;
-    color: {theme['footer_text']};
-    text-align: center;
-    margin-top: -18px;
-    margin-bottom: 18px;
-    font-style: italic;
-}}
-
-/* Dividers */
-.divider {{
-    border: none;
-    border-top: 2px solid {theme['border']};
-    margin: 35px 0;
-}}
-
-/* Key Points */
-.key-point {{
-    background-color: {theme['highlight_bg']};
-    border-left: 3px solid {theme['gold']};
-    padding: 12px 18px;
-    margin: 20px 0;
-    font-weight: bold;
-}}
+        # 2. THEME-SPECIFIC LAYOUT OVERRIDES
+        layout_css = ""
+        
+        if theme_id == "classic-academic":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 3.5cm 2.5cm 3cm 2.5cm;
+                @top-center {{
+                    content: "{theme['name'].upper()}";
+                    font-family: {theme['heading_font']};
+                    font-size: 8.5pt;
+                    color: {theme['footer_text']};
+                    border-bottom: 0.5px solid {theme['border']};
+                    padding-bottom: 6px;
+                    margin-bottom: 15px;
+                }}
+                @bottom-center {{
+                    content: counter(page);
+                    font-family: {theme['font_family']};
+                    font-size: 10pt;
+                    color: {theme['text']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                @top-center {{ content: normal; }}
+                @bottom-center {{ content: normal; }}
+            }}
+            
+            /* Cover Page - Classic Academic */
+            .cover-classic-academic {{
+                text-align: center;
+                padding: 120px 40px;
+                height: 100%;
+                page-break-after: always;
+                background-color: #ffffff;
+            }}
+            .cover-classic-academic .cover-badge {{
+                display: inline-block;
+                border: 1px solid {theme['border']};
+                background: none;
+                color: {theme['primary']};
+                font-weight: bold;
+                letter-spacing: 3px;
+                padding: 8px 20px;
+                text-transform: uppercase;
+                font-size: 9pt;
+                margin-bottom: 40px;
+            }}
+            .cover-classic-academic .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 28pt;
+                font-weight: normal;
+                color: {theme['heading']};
+                margin: 30px auto;
+                line-height: 1.3;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }}
+            .cover-classic-academic .cover-subtitle {{
+                font-family: {theme['font_family']};
+                font-size: 13pt;
+                color: {theme['subheading']};
+                margin-top: 15px;
+                font-style: italic;
+            }}
+            .cover-classic-academic .cover-divider {{
+                width: 120px;
+                height: 1px;
+                background-color: {theme['primary']};
+                margin: 40px auto;
+            }}
+            .cover-classic-academic .cover-meta {{
+                margin-top: 100px;
+                font-family: {theme['font_family']};
+                font-size: 11pt;
+                color: {theme['text']};
+                line-height: 2;
+            }}
+            
+            /* Main Content - Classic Academic */
+            .main-classic-academic {{
+                font-family: {theme['font_family']};
+            }}
+            .main-classic-academic .doc-header {{
+                font-family: {theme['heading_font']};
+                font-size: 10pt;
+                text-align: center;
+                border-bottom: 1px double {theme['border']};
+                padding-bottom: 10px;
+                margin-bottom: 40px;
+                letter-spacing: 2px;
+                color: {theme['primary']};
+            }}
+            .main-classic-academic h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: {theme['heading']};
+                text-align: center;
+                margin-top: 45px;
+                margin-bottom: 25px;
+                border-bottom: 1px solid {theme['border']};
+                padding-bottom: 8px;
+                page-break-after: avoid;
+            }}
+            .main-classic-academic h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                color: {theme['secondary']};
+                margin-top: 30px;
+                margin-bottom: 15px;
+                page-break-after: avoid;
+            }}
+            .main-classic-academic p {{
+                text-align: justify;
+                text-indent: 1.8em;
+                margin-bottom: 14px;
+            }}
+            .main-classic-academic p:first-of-type {{
+                text-indent: 0;
+            }}
+            .main-classic-academic blockquote {{
+                margin: 25px 2cm;
+                padding: 0;
+                border-left: none;
+                font-style: italic;
+                background: none;
+                text-align: justify;
+                line-height: 1.6;
+            }}
+            .main-classic-academic table {{
+                border-top: 2px solid {theme['primary']};
+                border-bottom: 2px solid {theme['primary']};
+                margin: 30px 0;
+            }}
+            .main-classic-academic th {{
+                background-color: transparent;
+                color: {theme['heading']};
+                border-bottom: 1px solid {theme['primary']};
+                font-weight: bold;
+                padding: 10px;
+            }}
+            .main-classic-academic td {{
+                border: none;
+                border-bottom: 0.5px solid {theme['border']};
+                padding: 10px;
+            }}
+            .main-classic-academic tr:nth-child(even) {{
+                background-color: transparent;
+            }}
+            .main-classic-academic .key-point {{
+                background-color: {theme['highlight_bg']};
+                border: 1px solid {theme['border']};
+                padding: 15px;
+                margin: 20px 0;
+            }}
+            """
+            
+        elif theme_id == "modern-corporate" or theme_id == "corporate-vibe" or theme_id == "corporate":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2.8cm 2.2cm 2.5cm 2.2cm;
+                border-top: 8px solid {theme['primary']};
+                @bottom-right {{
+                    content: "Page " counter(page) " of " counter(pages);
+                    font-family: {theme['font_family']};
+                    font-size: 8pt;
+                    color: {theme['footer_text']};
+                }}
+                @bottom-left {{
+                    content: "CONFIDENTIAL REPORT";
+                    font-family: {theme['font_family']};
+                    font-size: 8pt;
+                    color: {theme['footer_text']};
+                    font-weight: bold;
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                border-top: none;
+                @bottom-right {{ content: normal; }}
+                @bottom-left {{ content: normal; }}
+            }}
+            
+            /* Cover Page - Corporate */
+            .cover-{theme_id} {{
+                text-align: left;
+                padding: 0;
+                height: 100%;
+                page-break-after: always;
+                background-color: #ffffff;
+                position: relative;
+            }}
+            .cover-{theme_id}::before {{
+                content: "";
+                display: block;
+                height: 220px;
+                background-color: {theme['primary']};
+                margin-bottom: 60px;
+            }}
+            .cover-{theme_id} .cover-badge {{
+                display: inline-block;
+                background-color: {theme['accent']};
+                color: white;
+                font-weight: bold;
+                letter-spacing: 1px;
+                padding: 6px 14px;
+                text-transform: uppercase;
+                font-size: 8pt;
+                margin-left: 50px;
+            }}
+            .cover-{theme_id} .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 32pt;
+                font-weight: bold;
+                color: {theme['primary']};
+                margin: 30px 50px;
+                line-height: 1.2;
+            }}
+            .cover-{theme_id} .cover-subtitle {{
+                font-family: {theme['font_family']};
+                font-size: 14pt;
+                color: {theme['subheading']};
+                margin: 0 50px 40px 50px;
+            }}
+            .cover-{theme_id} .cover-divider {{
+                width: 100px;
+                height: 4px;
+                background-color: {theme['accent']};
+                margin: 0 50px;
+            }}
+            .cover-{theme_id} .cover-meta {{
+                margin-top: 100px;
+                padding-left: 50px;
+                font-family: {theme['font_family']};
+                font-size: 10pt;
+                color: {theme['text']};
+                line-height: 1.8;
+                border-left: 3px solid {theme['border']};
+                margin-left: 50px;
+            }}
+            
+            /* Main Content - Corporate */
+            .main-{theme_id} {{
+                font-family: {theme['font_family']};
+            }}
+            .main-{theme_id} .doc-header {{
+                font-family: {theme['heading_font']};
+                font-size: 9pt;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: {theme['secondary']};
+                border-bottom: 2px solid {theme['border']};
+                padding-bottom: 8px;
+                margin-bottom: 40px;
+                font-weight: bold;
+            }}
+            .main-{theme_id} h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: {theme['primary']};
+                margin-top: 35px;
+                margin-bottom: 18px;
+                border-bottom: 2px solid {theme['border']};
+                padding-bottom: 5px;
+                page-break-after: avoid;
+            }}
+            .main-{theme_id} h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                color: {theme['secondary']};
+                margin-top: 25px;
+                margin-bottom: 12px;
+                page-break-after: avoid;
+            }}
+            .main-{theme_id} p {{
+                margin-bottom: 16px;
+                text-align: left;
+                line-height: 1.65;
+            }}
+            .main-{theme_id} blockquote {{
+                background-color: {theme['quote_bg']};
+                border-left: 4px solid {theme['primary']};
+                padding: 15px 20px;
+                margin: 20px 0;
+            }}
+            .main-{theme_id} table {{
+                border-top: 2px solid {theme['primary']};
+                border-bottom: 2px solid {theme['primary']};
+                margin: 25px 0;
+            }}
+            .main-{theme_id} th {{
+                background-color: {theme['primary']};
+                color: white;
+                font-weight: bold;
+                padding: 10px 12px;
+            }}
+            .main-{theme_id} td {{
+                border-bottom: 1px solid {theme['border']};
+                padding: 10px 12px;
+            }}
+            .main-{theme_id} tr:nth-child(even) {{
+                background-color: {theme['table_alt']};
+            }}
+            .main-{theme_id} .key-point {{
+                background-color: {theme['highlight_bg']};
+                border-left: 4px solid {theme['gold']};
+                padding: 15px;
+                margin: 20px 0;
+            }}
+            """
+            
+        elif theme_id == "elegant-legal":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2.5cm 2.5cm 2.5cm 3.5cm;
+                border-left: 2px solid #8c1d1d;
+                @bottom-center {{
+                    content: "Page " counter(page);
+                    font-family: {theme['font_family']};
+                    font-size: 10pt;
+                    color: {theme['text']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                border-left: none;
+                @bottom-center {{ content: normal; }}
+            }}
+            
+            /* Cover Page - Legal */
+            .cover-elegant-legal {{
+                text-align: center;
+                padding: 150px 50px;
+                height: 100%;
+                page-break-after: always;
+                background-color: #ffffff;
+            }}
+            .cover-elegant-legal .cover-badge {{
+                display: none;
+            }}
+            .cover-elegant-legal .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 24pt;
+                font-weight: bold;
+                color: #000000;
+                text-transform: uppercase;
+                margin: 40px auto;
+                line-height: 1.4;
+                border-top: 3px double #000000;
+                border-bottom: 3px double #000000;
+                padding: 20px 0;
+            }}
+            .cover-elegant-legal .cover-subtitle {{
+                font-family: {theme['font_family']};
+                font-size: 12pt;
+                color: #333333;
+                margin-top: 15px;
+            }}
+            .cover-elegant-legal .cover-divider {{
+                display: none;
+            }}
+            .cover-elegant-legal .cover-meta {{
+                margin-top: 150px;
+                text-align: left;
+                font-family: {theme['font_family']};
+                font-size: 11pt;
+                line-height: 2.2;
+                margin-left: 40px;
+            }}
+            
+            /* Main Content - Legal */
+            .main-elegant-legal {{
+                font-family: {theme['font_family']};
+                line-height: 2.1;
+            }}
+            .main-elegant-legal .doc-header {{
+                text-align: center;
+                font-family: {theme['heading_font']};
+                font-size: 11pt;
+                font-weight: bold;
+                text-transform: uppercase;
+                border-bottom: 1px solid #000000;
+                padding-bottom: 8px;
+                margin-bottom: 45px;
+            }}
+            .main-elegant-legal h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: #000000;
+                text-transform: uppercase;
+                text-align: center;
+                margin-top: 40px;
+                margin-bottom: 20px;
+                page-break-after: avoid;
+            }}
+            .main-elegant-legal h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                color: {theme['secondary']};
+                margin-top: 30px;
+                margin-bottom: 15px;
+                page-break-after: avoid;
+            }}
+            .main-elegant-legal p {{
+                text-align: justify;
+                text-indent: 2.5em;
+                margin-bottom: 0;
+            }}
+            .main-elegant-legal blockquote {{
+                margin: 20px 1.5cm;
+                border: 1px solid {theme['border']};
+                padding: 15px;
+                background-color: {theme['quote_bg']};
+                font-style: italic;
+            }}
+            .main-elegant-legal table {{
+                border: 1px solid #000000;
+                margin: 25px 0;
+            }}
+            .main-elegant-legal th, .main-elegant-legal td {{
+                border: 1px solid #000000;
+                padding: 8px 12px;
+            }}
+            .main-elegant-legal th {{
+                background-color: #f5f5f4;
+                color: #000000;
+            }}
+            """
+            
+        elif theme_id == "executive-luxury":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 3.2cm;
+                border: 1px solid {theme['primary']};
+                padding: 1.2cm;
+                @bottom-center {{
+                    content: "—  " counter(page) "  —";
+                    font-family: {theme['heading_font']};
+                    font-size: 10pt;
+                    color: {theme['primary']};
+                    letter-spacing: 1px;
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                border: none;
+                @bottom-center {{ content: normal; }}
+            }}
+            
+            /* Cover Page - Luxury */
+            .cover-executive-luxury {{
+                text-align: center;
+                padding: 140px 50px;
+                height: 100%;
+                page-break-after: always;
+                background-color: #ffffff;
+                border: 1px solid {theme['primary']};
+                margin: 2.5cm;
+                box-sizing: border-box;
+            }}
+            .cover-executive-luxury .cover-badge {{
+                display: inline-block;
+                background-color: transparent;
+                border: 1px solid {theme['primary']};
+                color: {theme['primary']};
+                font-weight: bold;
+                letter-spacing: 4px;
+                padding: 5px 20px;
+                text-transform: uppercase;
+                font-size: 8pt;
+                margin-bottom: 50px;
+            }}
+            .cover-executive-luxury .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 26pt;
+                font-weight: normal;
+                color: {theme['heading']};
+                letter-spacing: 3px;
+                text-transform: uppercase;
+                line-height: 1.4;
+                margin: 30px auto;
+            }}
+            .cover-executive-luxury .cover-subtitle {{
+                font-family: {theme['font_family']};
+                font-size: 12pt;
+                color: {theme['subheading']};
+                letter-spacing: 1px;
+                font-style: italic;
+            }}
+            .cover-executive-luxury .cover-divider {{
+                width: 140px;
+                height: 1px;
+                background-color: {theme['primary']};
+                margin: 35px auto;
+            }}
+            .cover-executive-luxury .cover-meta {{
+                margin-top: 100px;
+                font-family: {theme['font_family']};
+                font-size: 9.5pt;
+                color: {theme['text']};
+                line-height: 2;
+                letter-spacing: 0.5px;
+            }}
+            
+            /* Main Content - Luxury */
+            .main-executive-luxury {{
+                font-family: {theme['font_family']};
+            }}
+            .main-executive-luxury .doc-header {{
+                text-align: center;
+                font-family: {theme['heading_font']};
+                font-size: 11pt;
+                font-weight: normal;
+                text-transform: uppercase;
+                letter-spacing: 3px;
+                color: {theme['primary']};
+                border-bottom: 1px solid {theme['primary']};
+                padding-bottom: 12px;
+                margin-bottom: 45px;
+            }}
+            .main-executive-luxury h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: {theme['heading']};
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                text-align: center;
+                margin-top: 45px;
+                margin-bottom: 25px;
+                border-bottom: 1px solid {theme['primary']};
+                padding-bottom: 10px;
+                page-break-after: avoid;
+            }}
+            .main-executive-luxury h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                color: {theme['secondary']};
+                letter-spacing: 1px;
+                text-align: center;
+                margin-top: 30px;
+                margin-bottom: 15px;
+                page-break-after: avoid;
+            }}
+            .main-executive-luxury p {{
+                text-align: justify;
+                line-height: 1.8;
+                margin-bottom: 16px;
+            }}
+            .main-executive-luxury blockquote {{
+                margin: 25px 0;
+                padding: 15px 25px;
+                background-color: {theme['quote_bg']};
+                border-left: 2px solid {theme['primary']};
+                font-style: italic;
+                color: {theme['secondary']};
+            }}
+            .main-executive-luxury table {{
+                border-top: 1px solid {theme['primary']};
+                border-bottom: 1px solid {theme['primary']};
+                margin: 30px 0;
+            }}
+            .main-executive-luxury th {{
+                background-color: transparent;
+                color: {theme['heading']};
+                border-bottom: 1.5px solid {theme['primary']};
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }}
+            .main-executive-luxury td {{
+                border: none;
+                border-bottom: 1px solid #f4f4f5;
+                padding: 10px;
+            }}
+            """
+            
+        elif theme_id == "scientific-journal":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2cm;
+                @bottom-center {{
+                    content: counter(page);
+                    font-family: {theme['font_family']};
+                    font-size: 9pt;
+                    color: {theme['text']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                @bottom-center {{ content: normal; }}
+            }}
+            
+            /* Cover Page - Scientific */
+            .cover-scientific-journal {{
+                text-align: center;
+                padding: 160px 60px;
+                height: 100%;
+                page-break-after: always;
+                background-color: #ffffff;
+            }}
+            .cover-scientific-journal .cover-badge {{
+                display: none;
+            }}
+            .cover-scientific-journal .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 22pt;
+                font-weight: bold;
+                color: {theme['heading']};
+                margin: 20px auto;
+                line-height: 1.3;
+            }}
+            .cover-scientific-journal .cover-subtitle {{
+                font-family: {theme['font_family']};
+                font-size: 13pt;
+                color: {theme['subheading']};
+                margin-top: 10px;
+            }}
+            .cover-scientific-journal .cover-divider {{
+                width: 80px;
+                height: 2px;
+                background-color: {theme['primary']};
+                margin: 30px auto;
+            }}
+            .cover-scientific-journal .cover-meta {{
+                margin-top: 120px;
+                font-family: {theme['font_family']};
+                font-size: 10pt;
+                color: {theme['text']};
+                line-height: 2;
+            }}
+            
+            /* Main Content - Scientific (Dual Column) */
+            .main-scientific-journal {{
+                column-count: 2;
+                column-gap: 1.2cm;
+                font-family: {theme['font_family']};
+            }}
+            .main-scientific-journal .doc-header {{
+                column-span: all;
+                font-family: {theme['heading_font']};
+                font-size: 12pt;
+                font-weight: bold;
+                text-align: center;
+                border-bottom: 2px solid #000000;
+                padding-bottom: 12px;
+                margin-bottom: 30px;
+                text-transform: uppercase;
+            }}
+            
+            /* CSS Counters for auto section numbering */
+            .main-scientific-journal {{
+                counter-reset: h1counter;
+            }}
+            .main-scientific-journal h1 {{
+                column-span: all;
+                counter-reset: h2counter;
+                font-family: {theme['heading_font']};
+                font-size: 13pt;
+                font-weight: bold;
+                color: {theme['heading']};
+                margin-top: 30px;
+                margin-bottom: 12px;
+                border-bottom: 1px solid #000000;
+                padding-bottom: 3px;
+                page-break-after: avoid;
+                text-transform: uppercase;
+                border-left: none;
+                padding-left: 0;
+            }}
+            .main-scientific-journal h1::before {{
+                counter-increment: h1counter;
+                content: counter(h1counter) ". ";
+            }}
+            .main-scientific-journal h2 {{
+                font-family: {theme['heading_font']};
+                font-size: 10.5pt;
+                font-weight: bold;
+                color: {theme['subheading']};
+                margin-top: 18px;
+                margin-bottom: 8px;
+                page-break-after: avoid;
+            }}
+            .main-scientific-journal h2::before {{
+                counter-increment: h2counter;
+                content: counter(h1counter) "." counter(h2counter) " ";
+            }}
+            .main-scientific-journal p {{
+                font-size: 9.5pt;
+                line-height: 1.45;
+                text-align: justify;
+                text-indent: 1.5em;
+                margin-bottom: 6px;
+            }}
+            .main-scientific-journal p:first-of-type {{
+                text-indent: 0;
+            }}
+            .main-scientific-journal blockquote {{
+                column-span: all;
+                background-color: {theme['quote_bg']};
+                border-left: 3px solid {theme['primary']};
+                padding: 10px 15px;
+                margin: 15px 0;
+                font-size: 9.5pt;
+            }}
+            .main-scientific-journal table {{
+                column-span: all;
+                border-top: 1.5px solid #000;
+                border-bottom: 1.5px solid #000;
+                margin: 20px 0;
+                font-size: 9pt;
+            }}
+            .main-scientific-journal th {{
+                background-color: transparent;
+                color: #000;
+                border-bottom: 1px solid #000;
+                font-weight: bold;
+                padding: 6px;
+            }}
+            .main-scientific-journal td {{
+                border: none;
+                padding: 6px;
+            }}
+            .main-scientific-journal tr:nth-child(even) {{
+                background-color: transparent;
+            }}
+            .main-scientific-journal .key-point {{
+                background-color: {theme['highlight_bg']};
+                border: 1px solid {theme['border']};
+                padding: 10px;
+                margin: 15px 0;
+                font-size: 9.5pt;
+            }}
+            """
+            
+        elif theme_id == "vintage-paper":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2.8cm 2.4cm;
+                @bottom-right {{
+                    content: "Folio " counter(page);
+                    font-family: {theme['font_family']};
+                    font-size: 9pt;
+                    font-style: italic;
+                    color: {theme['footer_text']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                @bottom-right {{ content: normal; }}
+            }}
+            
+            body {{
+                background-image: url('vintage-paper.jpg');
+                background-size: cover;
+                background-repeat: no-repeat;
+                background-position: center;
+            }}
+            
+            /* Cover Page - Vintage */
+            .cover-vintage-paper {{
+                text-align: center;
+                padding: 120px 50px;
+                height: 100%;
+                page-break-after: always;
+                background-image: url('vintage-paper.jpg');
+                background-size: cover;
+                border: 4px double {theme['primary']};
+                margin: 2cm;
+                box-sizing: border-box;
+            }}
+            .cover-vintage-paper .cover-badge {{
+                display: inline-block;
+                background: none;
+                border: 1px dashed {theme['primary']};
+                color: {theme['primary']};
+                font-family: {theme['font_family']};
+                padding: 5px 15px;
+                font-style: italic;
+                font-size: 9pt;
+                margin-bottom: 40px;
+            }}
+            .cover-vintage-paper .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 28pt;
+                color: {theme['heading']};
+                margin: 20px auto;
+                line-height: 1.3;
+            }}
+            .cover-vintage-paper .cover-subtitle {{
+                font-size: 13pt;
+                color: {theme['subheading']};
+                margin-top: 10px;
+                font-style: italic;
+            }}
+            .cover-vintage-paper .cover-divider {{
+                width: 100px;
+                height: 2px;
+                background-color: {theme['primary']};
+                margin: 30px auto;
+            }}
+            .cover-vintage-paper .cover-meta {{
+                margin-top: 100px;
+                font-family: {theme['font_family']};
+                font-size: 10pt;
+                color: {theme['text']};
+                line-height: 2;
+            }}
+            
+            /* Main Content - Vintage */
+            .main-vintage-paper {{
+                font-family: {theme['font_family']};
+            }}
+            .main-vintage-paper .doc-header {{
+                text-align: center;
+                font-size: 11pt;
+                font-family: {theme['heading_font']};
+                border-bottom: 1px dashed {theme['primary']};
+                padding-bottom: 10px;
+                margin-bottom: 40px;
+                color: {theme['primary']};
+            }}
+            .main-vintage-paper h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: {theme['heading']};
+                text-align: center;
+                border-bottom: 1px dashed {theme['primary']};
+                padding-bottom: 8px;
+                margin-top: 40px;
+                page-break-after: avoid;
+                border-left: none;
+                padding-left: 0;
+            }}
+            .main-vintage-paper h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                color: {theme['subheading']};
+                margin-top: 30px;
+                page-break-after: avoid;
+            }}
+            .main-vintage-paper p {{
+                line-height: 1.8;
+                text-indent: 2.2em;
+                color: {theme['text']};
+                text-align: justify;
+            }}
+            .main-vintage-paper p:first-of-type {{
+                text-indent: 0;
+            }}
+            .main-vintage-paper blockquote {{
+                background-color: rgba(241, 231, 208, 0.5);
+                border: none;
+                border-left: 3px double {theme['primary']};
+                padding: 12px 20px;
+                font-style: italic;
+                margin: 25px 15px;
+            }}
+            .main-vintage-paper table {{
+                border-top: 1px solid {theme['primary']};
+                border-bottom: 1px solid {theme['primary']};
+                margin: 25px 0;
+            }}
+            .main-vintage-paper th {{
+                background-color: transparent;
+                color: {theme['heading']};
+                border-bottom: 1px solid {theme['primary']};
+                font-weight: bold;
+                padding: 10px;
+            }}
+            .main-vintage-paper td {{
+                border: none;
+                border-bottom: 1px dotted {theme['border']};
+                padding: 10px;
+                color: {theme['text']};
+            }}
+            .main-vintage-paper tr:nth-child(even) {{
+                background-color: rgba(241, 231, 208, 0.2);
+            }}
+            .main-vintage-paper .key-point {{
+                background-color: {theme['highlight_bg']};
+                border-left: 3px solid {theme['primary']};
+                padding: 12px 18px;
+            }}
+            """
+            
+        elif theme_id == "modern-minimalist":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 3.5cm 2.5cm;
+                @bottom-left {{
+                    content: counter(page);
+                    font-family: {theme['font_family']};
+                    font-size: 9.5pt;
+                    color: {theme['footer_text']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                @bottom-left {{ content: normal; }}
+            }}
+            
+            /* Cover Page - Minimalist */
+            .cover-modern-minimalist {{
+                text-align: left;
+                padding: 160px 60px;
+                height: 100%;
+                page-break-after: always;
+                background-color: #ffffff;
+            }}
+            .cover-modern-minimalist .cover-badge {{
+                display: none;
+            }}
+            .cover-modern-minimalist .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 34pt;
+                font-weight: 200;
+                letter-spacing: -1px;
+                color: {theme['heading']};
+                margin-bottom: 20px;
+                line-height: 1.2;
+            }}
+            .cover-modern-minimalist .cover-subtitle {{
+                font-family: {theme['font_family']};
+                font-size: 13pt;
+                color: {theme['subheading']};
+                margin-top: 10px;
+            }}
+            .cover-modern-minimalist .cover-divider {{
+                display: none;
+            }}
+            .cover-modern-minimalist .cover-meta {{
+                margin-top: 150px;
+                font-family: {theme['font_family']};
+                font-size: 10pt;
+                color: {theme['text']};
+                line-height: 1.8;
+                border-top: 1px solid {theme['border']};
+                padding-top: 30px;
+            }}
+            
+            /* Main Content - Minimalist */
+            .main-modern-minimalist {{
+                font-family: {theme['font_family']};
+            }}
+            .main-modern-minimalist .doc-header {{
+                font-family: {theme['heading_font']};
+                font-size: 9pt;
+                color: {theme['footer_text']};
+                border-bottom: 1px solid {theme['border']};
+                padding-bottom: 10px;
+                margin-bottom: 50px;
+                font-weight: 400;
+            }}
+            .main-modern-minimalist h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                font-weight: 300;
+                letter-spacing: -0.5px;
+                color: {theme['heading']};
+                margin-top: 45px;
+                margin-bottom: 20px;
+                border-bottom: none;
+                padding-left: 0;
+                page-break-after: avoid;
+            }}
+            .main-modern-minimalist h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                font-weight: 400;
+                color: {theme['subheading']};
+                margin-top: 30px;
+                page-break-after: avoid;
+            }}
+            .main-modern-minimalist p {{
+                font-size: 11pt;
+                line-height: 1.75;
+                color: {theme['text']};
+                text-indent: 0;
+                margin-bottom: 20px;
+            }}
+            .main-modern-minimalist blockquote {{
+                background-color: transparent;
+                border-left: 2px solid {theme['primary']};
+                padding: 10px 0 10px 20px;
+                margin: 25px 0;
+                font-style: normal;
+                color: {theme['accent']};
+            }}
+            .main-modern-minimalist table {{
+                border: none;
+                margin: 30px 0;
+            }}
+            .main-modern-minimalist th {{
+                background-color: transparent;
+                color: {theme['heading']};
+                border-bottom: 2px solid {theme['primary']};
+                font-weight: 600;
+                padding: 12px 6px;
+            }}
+            .main-modern-minimalist td {{
+                border: none;
+                border-bottom: 1px solid {theme['border']};
+                padding: 12px 6px;
+            }}
+            .main-modern-minimalist tr:nth-child(even) {{
+                background-color: transparent;
+            }}
+            .main-modern-minimalist .key-point {{
+                background-color: {theme['highlight_bg']};
+                border: none;
+                border-top: 1px solid {theme['border']};
+                border-bottom: 1px solid {theme['border']};
+                padding: 15px 0;
+            }}
+            """
+            
+        elif theme_id == "midnight-tech":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2.5cm 2cm;
+                @bottom-right {{
+                    content: "SYS_STATUS: ACTIVE // PAGE " counter(page);
+                    font-family: {theme['code_font']};
+                    font-size: 8pt;
+                    color: {theme['footer_text']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                @bottom-right {{ content: normal; }}
+            }}
+            
+            body {{
+                background-color: {theme['bg_color']};
+                color: {theme['text']};
+            }}
+            
+            /* Cover Page - Midnight */
+            .cover-midnight-tech {{
+                text-align: center;
+                padding: 140px 40px;
+                height: 100%;a
+                page-break-after: always;
+                background-color: {theme['bg_color']};
+            }}
+            .cover-midnight-tech .cover-badge {{
+                display: inline-block;
+                background-color: {theme['secondary']};
+                color: white;
+                font-family: {theme['code_font']};
+                font-size: 8pt;
+                letter-spacing: 2px;
+                padding: 6px 14px;
+                border-radius: 4px;
+                margin-bottom: 30px;
+            }}
+            .cover-midnight-tech .cover-title {{
+                font-family: {theme['heading_font']};
+                font-size: 28pt;
+                color: {theme['heading']};
+                margin-bottom: 15px;
+                line-height: 1.3;
+            }}
+            .cover-midnight-tech .cover-subtitle {{
+                font-size: 13pt;
+                color: {theme['subheading']};
+                margin-bottom: 40px;
+                font-family: {theme['code_font']};
+            }}
+            .cover-midnight-tech .cover-divider {{
+                width: 120px;
+                height: 2px;
+                background-color: {theme['primary']};
+                margin: 30px auto;
+            }}
+            .cover-midnight-tech .cover-meta {{
+                margin-top: 100px;
+                font-family: {theme['code_font']};
+                font-size: 9.5pt;
+                color: {theme['footer_text']};
+                line-height: 2;
+                text-align: left;
+                display: inline-block;
+                border: 1px solid {theme['border']};
+                padding: 20px 40px;
+                border-radius: 6px;
+                background-color: {theme['code_bg']};
+            }}
+            
+            /* Main Content - Midnight */
+            .main-midnight-tech .doc-header {{
+                font-family: {theme['code_font']};
+                font-size: 8.5pt;
+                color: {theme['primary']};
+                border-bottom: 1px solid {theme['border']};
+                padding-bottom: 10px;
+                margin-bottom: 40px;
+                letter-spacing: 1px;
+            }}
+            .main-midnight-tech h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: {theme['heading']};
+                border-bottom: 2px solid {theme['primary']};
+                padding-bottom: 6px;
+                margin-top: 35px;
+                page-break-after: avoid;
+                border-left: none;
+                padding-left: 0;
+            }}
+            .main-midnight-tech h2 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h2']};
+                color: {theme['subheading']};
+                margin-top: 25px;
+                page-break-after: avoid;
+            }}
+            .main-midnight-tech p {{
+                line-height: 1.65;
+                color: {theme['text']};
+                text-indent: 0;
+                margin-bottom: 15px;
+            }}
+            .main-midnight-tech blockquote {{
+                background-color: {theme['quote_bg']};
+                border-left: 4px solid {theme['primary']};
+                border-radius: 4px;
+                padding: 15px 20px;
+                margin: 20px 0;
+            }}
+            .main-midnight-tech .question {{
+                background-color: {theme['quote_bg']};
+                border: 1px solid {theme['border']};
+                border-left: 4px solid {theme['accent']};
+                padding: 15px;
+                border-radius: 4px;
+                color: {theme['heading']};
+            }}
+            .main-midnight-tech .answer {{
+                border-left: 2px solid {theme['border']};
+                background-color: {theme['bg_color']};
+                padding: 15px;
+                margin-top: 5px;
+                border-radius: 0 4px 4px 0;
+            }}
+            .main-midnight-tech table {{
+                border: 1px solid {theme['border']};
+                border-radius: 6px;
+                overflow: hidden;
+            }}
+            .main-midnight-tech th {{
+                background-color: {theme['code_bg']};
+                color: {theme['primary']};
+                border: 1px solid {theme['border']};
+            }}
+            .main-midnight-tech td {{
+                border: 1px solid {theme['border']};
+                background-color: {theme['bg_color']};
+                color: {theme['text']};
+            }}
+            .main-midnight-tech tr:nth-child(even) td {{
+                background-color: {theme['table_alt']};
+            }}
+            .main-midnight-tech .key-point {{
+                background-color: {theme['highlight_bg']};
+                border: 1px solid {theme['border']};
+                border-left: 4px solid {theme['gold']};
+                padding: 15px;
+                border-radius: 4px;
+            }}
+            """
+            
+        elif theme_id == "cyberpunk-creative":
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2.8cm 2cm;
+                @bottom-right {{
+                    content: "▼ NET_SECURE // PAGE " counter(page);
+                    font-family: {theme['code_font']};
+                    font-weight: bold;
+                    font-size: 8pt;
+                    color: {theme['primary']};
+                }}
+            }}
+            @page :first {{
+                margin: 0cm;
+                @bottom-right {{ content: normal; }}
+            }}
+            
+            body {{
+                background-color: {theme['bg_color']};
+                color: {theme['text']};
+                border: 3px solid {theme['primary']};
+                box-sizing: border-box;
+                height: 100%;
+            }}
+            
+            /* Cover Page - Cyberpunk */
+            .cover-cyberpunk-creative {{
+                text-align: center;
+                padding: 120px 40px;
+                height: 100%;
+                page-break-after: always;
+                background-color: {theme['bg_color']};
+                border: 2px dashed {theme['primary']};
+                margin: 1.5cm;
+                box-sizing: border-box;
+            }}
+            .cover-cyberpunk-creative .cover-badge {{
+                display: inline-block;
+                background-color: {theme['primary']};
+                color: {theme['bg_color']};
+                font-family: {theme['code_font']};
+                font-weight: bold;
+                letter-spacing: 2px;
+                padding: 6px 14px;
+                text-transform: uppercase;
+                font-size: 8.5pt;
+                margin-bottom: 40px;
+                box-shadow: 0 0 10px {theme['primary']};
+            }}
+            .cover-cyberpunk-creative .cover-title {{
+                font-family: {theme['code_font']};
+                font-weight: bold;
+                font-size: 26pt;
+                color: {theme['primary']};
+                text-shadow: 0 0 8px rgba(236, 72, 153, 0.6);
+                margin-bottom: 15px;
+                line-height: 1.3;
+                text-transform: uppercase;
+            }}
+            .cover-cyberpunk-creative .cover-subtitle {{
+                font-size: 13pt;
+                color: {theme['secondary']};
+                font-family: {theme['code_font']};
+                text-transform: uppercase;
+                margin-bottom: 40px;
+            }}
+            .cover-cyberpunk-creative .cover-divider {{
+                width: 120px;
+                height: 4px;
+                background-color: {theme['accent']};
+                margin: 30px auto;
+                box-shadow: 0 0 8px {theme['accent']};
+            }}
+            .cover-cyberpunk-creative .cover-meta {{
+                margin-top: 100px;
+                font-family: {theme['code_font']};
+                font-size: 9pt;
+                color: {theme['text']};
+                line-height: 2;
+                text-align: left;
+                display: inline-block;
+                border: 1px solid {theme['border']};
+                padding: 20px 30px;
+                background-color: {theme['code_bg']};
+            }}
+            
+            /* Main Content - Cyberpunk */
+            .main-cyberpunk-creative .doc-header {{
+                font-family: {theme['code_font']};
+                font-size: 9pt;
+                font-weight: bold;
+                color: {theme['secondary']};
+                border-bottom: 2px solid {theme['secondary']};
+                padding-bottom: 10px;
+                margin-bottom: 40px;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }}
+            .main-cyberpunk-creative h1 {{
+                font-family: {theme['code_font']};
+                font-weight: bold;
+                font-size: {s['h1']};
+                color: {theme['primary']};
+                text-shadow: 0 0 8px rgba(236, 72, 153, 0.5);
+                border-bottom: 2px solid {theme['secondary']};
+                padding-bottom: 8px;
+                margin-top: 35px;
+                text-transform: uppercase;
+                border-left: none;
+                padding-left: 0;
+                page-break-after: avoid;
+            }}
+            .main-cyberpunk-creative h2 {{
+                font-family: {theme['code_font']};
+                font-size: {s['h2']};
+                color: {theme['secondary']};
+                text-shadow: 0 0 5px rgba(6, 182, 212, 0.3);
+                text-transform: uppercase;
+                margin-top: 25px;
+                page-break-after: avoid;
+            }}
+            .main-cyberpunk-creative p {{
+                font-family: {theme['code_font']};
+                line-height: 1.6;
+                color: {theme['text']};
+                margin-bottom: 15px;
+            }}
+            .main-cyberpunk-creative blockquote {{
+                background-color: {theme['quote_bg']};
+                border: 1px solid {theme['border']};
+                border-left: 4px solid {theme['accent']};
+                color: {theme['accent']};
+                padding: 15px 20px;
+                margin: 20px 0;
+            }}
+            .main-cyberpunk-creative .question {{
+                background-color: {theme['code_bg']};
+                border: 2px solid {theme['primary']};
+                color: {theme['heading']};
+                font-family: {theme['code_font']};
+                text-transform: uppercase;
+                border-radius: 0;
+            }}
+            .main-cyberpunk-creative .answer {{
+                background-color: {theme['quote_bg']};
+                border: 1px dashed {theme['secondary']};
+                padding: 15px;
+                margin-top: 5px;
+            }}
+            .main-cyberpunk-creative table {{
+                border: 2px solid {theme['secondary']};
+                background-color: {theme['code_bg']};
+            }}
+            .main-cyberpunk-creative th {{
+                background-color: {theme['primary']};
+                color: {theme['bg_color']};
+                font-weight: bold;
+                border: 1px solid {theme['secondary']};
+                text-transform: uppercase;
+            }}
+            .main-cyberpunk-creative td {{
+                border: 1px solid {theme['secondary']};
+                color: {theme['text']};
+            }}
+            .main-cyberpunk-creative tr:nth-child(even) td {{
+                background-color: {theme['table_alt']};
+            }}
+            .main-cyberpunk-creative .key-point {{
+                background-color: {theme['accent']};
+                color: {theme['bg_color']};
+                border-left: 5px solid {theme['primary']};
+                padding: 15px;
+                font-weight: bold;
+            }}
+            """
+            
+        else:
+            layout_css = f"""
+            @page {{
+                size: A4;
+                margin: 2.5cm;
+                @bottom-right {{
+                    content: "Page " counter(page);
+                    font-family: {theme['font_family']};
+                    font-size: 9pt;
+                    color: {theme['footer_text']};
+                }}
+            }}
+            h1 {{
+                font-family: {theme['heading_font']};
+                font-size: {s['h1']};
+                color: {theme['heading']};
+                margin-top: 30px;
+                border-left: 4px solid {theme['accent']};
+                padding-left: 10px;
+            }}
+            p {{
+                line-height: 1.6;
+            }}
+            """
+            
+        return base_css + layout_css
 """
     
     def build_cover_page(self, doc):
         """Generate premium cover page"""
         metadata = doc.get('metadata', {})
+        theme_name = self.theme['name'].lower().replace(' ', '-')
         
         meta_html = ""
         if metadata.get('author'):
-            meta_html += f'<p><strong>Author:</strong> {metadata["author"]}</p>'
+            meta_html += f'<p class="meta-author"><strong>Author:</strong> {metadata["author"]}</p>'
         if metadata.get('date'):
-            meta_html += f'<p><strong>Date:</strong> {metadata["date"]}</p>'
+            meta_html += f'<p class="meta-date"><strong>Date:</strong> {metadata["date"]}</p>'
         else:
-            meta_html += f'<p><strong>Date:</strong> {datetime.now().strftime("%B %d, %Y")}</p>'
+            meta_html += f'<p class="meta-date"><strong>Date:</strong> {datetime.now().strftime("%B %d, %Y")}</p>'
         if metadata.get('version'):
-            meta_html += f'<p><strong>Version:</strong> {metadata["version"]}</p>'
+            meta_html += f'<p class="meta-version"><strong>Version:</strong> {metadata["version"]}</p>'
         if metadata.get('institution'):
-            meta_html += f'<p><strong>Organization:</strong> {metadata["institution"]}</p>'
+            meta_html += f'<p class="meta-inst"><strong>Organization:</strong> {metadata["institution"]}</p>'
         
         return f"""
-<div class="cover-page">
+<div class="cover-page cover-{theme_name}">
     <div class="cover-badge">Premium Edition</div>
     <div class="cover-title">{doc.get('title', 'DOCUMENT')}</div>
     <div class="cover-subtitle">{doc.get('subtitle', '')}</div>
@@ -830,6 +2131,7 @@ tr:nth-child(even) {{
     def build(self, doc):
         """Build complete HTML document"""
         title = doc.get('title', 'PREMIUM DOCUMENT').upper()
+        theme_name = self.theme['name'].lower().replace(' ', '-')
         
         html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -851,12 +2153,17 @@ tr:nth-child(even) {{
         if self.has_toc:
             html += self.build_toc(doc)
         
+        # Add main content wrap
+        html += f'<div class="main-content main-{theme_name}">'
+        
         # Add main content header
         html += f'<div class="doc-header">{title}</div>'
         
         # Add all sections
         for section in doc.get('sections', []):
             html += self.build_element(section)
+            
+        html += '</div>'
         
         html += """
 </body>
@@ -890,7 +2197,7 @@ class PremiumPDFGenerator:
         html_content = self.builder.build(doc)
         
         # Generate PDF
-        pdf_bytes = HTML(string=html_content).write_pdf()
+        pdf_bytes = HTML(string=html_content, base_url=os.path.dirname(os.path.abspath(__file__))).write_pdf()
         
         if output_path:
             with open(output_path, 'wb') as f:
@@ -919,7 +2226,7 @@ def index():
         "version": "2.1",
         "speed": "⚡ Fast Manual Parser (No API calls)",
         "gemini": "Enabled" if GEMINI_AVAILABLE else "Disabled",
-        "themes": ["classic", "corporate", "legal", "luxury", "scientific"],
+        "themes": ["classic", "corporate", "legal", "luxury", "scientific", "vintage", "minimalist", "midnight", "cyberpunk"],
         "endpoints": {
             "GET /": "Health check",
             "GET /themes": "List available themes",
@@ -938,7 +2245,11 @@ def list_themes():
             "corporate": "Modern Corporate - Professional business documents",
             "legal": "Elegant Legal - Formal legal document styling",
             "luxury": "Executive Luxury - Premium executive documents",
-            "scientific": "Scientific Journal - Academic research papers"
+            "scientific": "Scientific Journal - Academic research papers",
+            "vintage": "Vintage Paper - Classic look with vintage paper background",
+            "minimalist": "Modern Minimalist - Clean Zinc, sans-serif design",
+            "midnight": "Midnight Tech - Dark Slate design with blue accents",
+            "cyberpunk": "Cyberpunk Creative - Neon pink and cyan details on dark background"
         }
     })
 

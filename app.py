@@ -96,6 +96,8 @@ class PremiumTheme:
         "font_family": "Georgia, 'Times New Roman', serif",
         "heading_font": "Georgia, serif",
         "code_font": "'Courier New', Courier, monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
     }
     
     # Theme 2: Modern Corporate - Professional business look
@@ -117,6 +119,8 @@ class PremiumTheme:
         "font_family": "'Helvetica Neue', Helvetica, Arial, sans-serif",
         "heading_font": "'Helvetica Neue', Arial, sans-serif",
         "code_font": "'Courier New', monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
     }
     
     # Theme 3: Elegant Legal - Formal legal documents
@@ -138,6 +142,8 @@ class PremiumTheme:
         "font_family": "'Book Antiqua', 'Palatino Linotype', Georgia, serif",
         "heading_font": "'Book Antiqua', Palatino, serif",
         "code_font": "'Courier New', Courier, monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
     }
     
     # Theme 4: Executive Luxury - Premium executive documents
@@ -159,6 +165,8 @@ class PremiumTheme:
         "font_family": "Didot, 'Bodoni MT', 'Times New Roman', serif",
         "heading_font": "Didot, Georgia, serif",
         "code_font": "'Courier New', monospace",
+        "bg_color": "#ffffff",
+        "extra_body_css": ""
     }
     
     # Theme 6: Vintage Paper - Classic look with vintage paper background
@@ -1383,10 +1391,7 @@ class PremiumHTMLBuilder:
             }}
             
             body {{
-                background-image: url('vintage-paper.jpg');
-                background-size: cover;
-                background-repeat: no-repeat;
-                background-position: center;
+                background-color: {theme.get('bg_color', '#faf3e0')};
             }}
             
             /* Cover Page - Vintage */
@@ -1395,8 +1400,7 @@ class PremiumHTMLBuilder:
                 padding: 120px 50px;
                 height: 100%;
                 page-break-after: always;
-                background-image: url('vintage-paper.jpg');
-                background-size: cover;
+                background-color: {theme.get('bg_color', '#faf3e0')};
                 border: 4px double {theme['primary']};
                 margin: 2cm;
                 box-sizing: border-box;
@@ -2269,11 +2273,17 @@ def generate_pdf():
         # Get parameters
         filename = data.get("filename", "document")
         theme_name = data.get("theme", "classic")
+        cover_page = data.get("cover_page", True)
+        table_of_contents = data.get("table_of_contents", True)
         
         logger.info(f"📝 Processing request for: {filename}")
         
         # Generate PDF
-        generator = PremiumPDFGenerator(theme_name)
+        options = {
+            'cover_page': cover_page,
+            'table_of_contents': table_of_contents,
+        }
+        generator = PremiumPDFGenerator(theme_name, options)
         pdf_bytes = generator.generate(bulk_text)
         
         # Prepare response

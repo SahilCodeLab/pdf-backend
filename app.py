@@ -1674,7 +1674,7 @@ class PremiumHTMLBuilder:
             .cover-midnight-tech {{
                 text-align: center;
                 padding: 140px 40px;
-                height: 100%;a
+                height: 100%;
                 page-break-after: always;
                 background-color: {theme['bg_color']};
             }}
@@ -2008,10 +2008,9 @@ class PremiumHTMLBuilder:
             """
             
         return base_css + layout_css
-"""
     
     def build_cover_page(self, doc):
-       # """Generate premium cover page"""
+        """Generate premium cover page"""
         metadata = doc.get('metadata', {})
         theme_name = self.theme['name'].lower().replace(' ', '-')
         
@@ -2370,7 +2369,20 @@ if __name__ == "__main__":
     debug = os.environ.get("DEBUG", "False").lower() == "true"
     
     print("""
-  
+    ╔════════════════════════════════════════════════════════════════════════════╗
+    ║                                                                            ║
+    ║     ██████╗ ██╗   ██╗███╗   ██╗ ██████╗ ███████╗ ██████╗ ███╗   ██╗       ║
+    ║     ██╔══██╗██║   ██║████╗  ██║██╔════╝ ██╔════╝██╔═══██╗████╗  ██║       ║
+    ║     ██████╔╝██║   ██║██╔██╗ ██║██║  ███╗█████╗  ██║   ██║██╔██╗ ██║       ║
+    ║     ██╔══██╗██║   ██║██║╚██╗██║██║   ██║██╔══╝  ██║   ██║██║╚██╗██║       ║
+    ║     ██████╔╝╚██████╔╝██║ ╚████║╚██████╔╝███████╗╚██████╔╝██║ ╚████║       ║
+    ║     ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝       ║
+    ║                                                                            ║
+    ║                    PREMIUM PDF GENERATOR v2.1                              ║
+    ║                   🚀 Speed Optimized Edition 🚀                            ║
+    ║                                                                            ║
+    ╚════════════════════════════════════════════════════════════════════════════╝
+    """)
     
     logger.info(f"🚀 Server starting on http://0.0.0.0:{port}")
     logger.info(f"🔧 Debug mode: {debug}")

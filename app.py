@@ -165,7 +165,7 @@ class PremiumTheme:
         "font_family": "Didot, 'Bodoni MT', 'Times New Roman', serif",
         "heading_font": "Didot, Georgia, serif",
         "code_font": "'Courier New', monospace",
-        "bg_color": "#ffffff",
+        "bg_color": "#fcfcfc",
         "extra_body_css": ""
     }
     
@@ -189,7 +189,7 @@ class PremiumTheme:
         "heading_font": "'Georgia', serif",
         "code_font": "'Courier New', monospace",
         "background_image": "url('vintage-paper.jpg')",
-        "bg_color": "#ffffff",
+        "bg_color": "#faf3e0",
         "extra_body_css": ""
     }
 

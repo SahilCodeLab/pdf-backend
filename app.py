@@ -2011,7 +2011,7 @@ class PremiumHTMLBuilder:
 """
     
     def build_cover_page(self, doc):
-        """Generate premium cover page"""
+       # """Generate premium cover page"""
         metadata = doc.get('metadata', {})
         theme_name = self.theme['name'].lower().replace(' ', '-')
         

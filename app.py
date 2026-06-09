@@ -559,19 +559,26 @@ class PremiumHTMLBuilder:
             font-family: {theme['font_family']};
             font-size: {s['base']};
             color: {theme['text']};
-            line-height: 1.7;
+            line-height: 1.8;
+            letter-spacing: 0.1px;
+        }}
+        p {{
+            margin-bottom: 16px;
+            text-align: left;
+            line-height: 1.8;
         }}
         ul, ol {{
             margin: 12px 0 20px 28px;
             padding: 0;
+            line-height: 1.8;
         }}
         ul li {{
             list-style-type: disc;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
         }}
         ol li {{
             list-style-type: decimal;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
         }}
         strong {{
             color: {theme['heading']};
@@ -748,18 +755,14 @@ class PremiumHTMLBuilder:
             }}
             .main-classic-academic p {{
                 text-align: justify;
-                text-indent: 1.8em;
-                margin-bottom: 14px;
-            }}
-            .main-classic-academic p:first-of-type {{
-                text-indent: 0;
+                margin-bottom: 18px;
             }}
             .main-classic-academic blockquote {{
                 margin: 25px 2cm;
-                padding: 0;
-                border-left: none;
+                padding: 15px 20px;
+                border-left: 3px solid {theme['border']};
                 font-style: italic;
-                background: none;
+                background-color: {theme['quote_bg']};
                 text-align: justify;
                 line-height: 1.6;
             }}
@@ -1041,13 +1044,13 @@ class PremiumHTMLBuilder:
             }}
             .main-elegant-legal p {{
                 text-align: justify;
-                text-indent: 2.5em;
-                margin-bottom: 0;
+                margin-bottom: 16px;
+                line-height: 2.1;
             }}
             .main-elegant-legal blockquote {{
                 margin: 20px 1.5cm;
-                border: 1px solid {theme['border']};
-                padding: 15px;
+                border-left: 4px solid {theme['border']};
+                padding: 15px 20px;
                 background-color: {theme['quote_bg']};
                 font-style: italic;
             }}
@@ -1326,21 +1329,18 @@ class PremiumHTMLBuilder:
             }}
             .main-scientific-journal p {{
                 font-size: 9.5pt;
-                line-height: 1.45;
+                line-height: 1.55;
                 text-align: justify;
-                text-indent: 1.5em;
-                margin-bottom: 6px;
-            }}
-            .main-scientific-journal p:first-of-type {{
-                text-indent: 0;
+                margin-bottom: 12px;
             }}
             .main-scientific-journal blockquote {{
                 column-span: all;
                 background-color: {theme['quote_bg']};
                 border-left: 3px solid {theme['primary']};
-                padding: 10px 15px;
-                margin: 15px 0;
+                padding: 12px 18px;
+                margin: 18px 0;
                 font-size: 9.5pt;
+                font-style: italic;
             }}
             .main-scientific-journal table {{
                 column-span: all;
@@ -1477,18 +1477,15 @@ class PremiumHTMLBuilder:
             }}
             .main-vintage-paper p {{
                 line-height: 1.8;
-                text-indent: 2.2em;
+                margin-bottom: 16px;
                 color: {theme['text']};
                 text-align: justify;
-            }}
-            .main-vintage-paper p:first-of-type {{
-                text-indent: 0;
             }}
             .main-vintage-paper blockquote {{
                 background-color: rgba(241, 231, 208, 0.5);
                 border: none;
                 border-left: 3px double {theme['primary']};
-                padding: 12px 20px;
+                padding: 15px 20px;
                 font-style: italic;
                 margin: 25px 15px;
             }}
